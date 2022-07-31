@@ -1,27 +1,13 @@
-import cmath
 import math as M
 import time
-from numba import cuda, vectorize, guvectorize, jit
-from numba import void, uint8, uint32, uint64, int32, int64, float32, float64, f8
+from numba import cuda, vectorize, guvectorize, jit, njit
 import numpy as np
-import matplotlib as mpl
 from matplotlib import pyplot as plt, animation, offsetbox
-from matplotlib.offsetbox import AnchoredText
 import matplotlib.cm as cm
 from C import C
 import cupy as cp
-from matplotlib.patches import Circle
 import cairo
-from sympy import symbols, Eq, solve
-# from scipy.fftpack import fft, fftshift
-from scipy import signal
-from scipy.signal import butter, lfilter, freqz
-import torch.fft as fft
-import torch
 
-
-# from vispy import plot as vp
-@jit(nopython=True, parallel=True)
 class FDTD_2D:
     def __init__(self):
         # mpl.use('Agg')
@@ -33,12 +19,6 @@ class FDTD_2D:
         self.nett_time_sum = 0
         self.frame_interval = 8
         self.ims = []
-        self.wstart = 10
-        self.fwidth = 5 + self.wstart
-        self.a = 2
-        self.b = 2
-        self.i = 0
-        self.j = 0
         self.flag = 1
         self.data_type1 = np.float32
         self.cc = C()
@@ -68,7 +48,7 @@ class FDTD_2D:
         self.ib = self.IE - self.ia - 1
         self.ja = 7
         self.jb = self.JE - self.ja - 1
-        self.nsteps = 1500
+        self.nsteps = 1000
         self.T = 0
         self.medium_eps = 1. / (self.epsilon_medium + self.sigma_medium * self.dt / self.epsz)
         self.medium_sigma = self.sigma_medium * self.dt / self.epsz
@@ -121,83 +101,100 @@ class FDTD_2D:
         self.grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
         self.ay = self.fig.add_subplot(self.grid[:, :])
         # Cyclic Number of image snapping
-        self.ims2 = None
-        self.ims4 = None
-        self.title = None
-        self.YY = None
+        x = np.linspace(0, self.JE, self.JE)
+        y = np.linspace(0, self.IE, self.IE)
+        # values = range(len(x))
+        self.X, self.Y = np.meshgrid(x, y)
         self.Z = None
-        self.Y = None
-        self.X = None
 
     # -------------------------------- KERNELS ---------------------------
-    def Ez_inc_CU(self):
-        for j in range(1, self.JE):
-            self.ez_inc[j] = self.ez_inc[j] + 0.5 * (self.hx_inc[j - 1] - self.hx_inc[j])
-        return self.ez_inc
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Ez_inc_CU(JE,ez_inc, hx_inc):
+        for j in range(1, JE):
+            ez_inc[j] = ez_inc[j] + 0.5 * (hx_inc[j - 1] - hx_inc[j])
+        return ez_inc
 
-    def Dz_CU(self):
-        for j in range(1, self.JE):
-            for i in range(1, self.IE):
-                self.dz[i][j] = self.gi3[i] * self.gj3[j] * self.dz[i][j] + \
-                                self.gi2[i] * self.gj2[j] * 0.5 * \
-                                (self.hy[i][j] - self.hy[i - 1][j] -
-                                 self.hx[i][j] + self.hx[i][j - 1])
-        return self.dz
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Dz_CU(IE,JE,dz, hx, hy, gi2, gi3, gj2, gj3):
+        for j in range(1, JE):
+            for i in range(1, IE):
+                dz[i][j] = gi3[i] * gj3[j] * dz[i][j] + \
+                           gi2[i] * gj2[j] * 0.5 * \
+                           (hy[i][j] - hy[i - 1][j] -
+                            hx[i][j] + hx[i][j - 1])
+        return dz
 
-    def Dz_inc_val_CU(self):
-        for i in range(self.ia, self.ib + 1):
-            self.dz[i][self.ja] = self.dz[i][self.ja] + 0.5 * self.hx_inc[self.ja - 1]
-            self.dz[i][self.jb] = self.dz[i][self.jb] - 0.5 * self.hx_inc[self.jb]
-        return self.dz
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Dz_inc_val_CU(ia,ib,ja,jb,dz, hx_inc):
+        for i in range(ia, ib + 1):
+            dz[i][ja] = dz[i][ja] + 0.5 * hx_inc[ja - 1]
+            dz[i][jb] = dz[i][jb] - 0.5 * hx_inc[jb]
+        return dz
 
-    def Ez_Dz_CU(self):
-        for j in range(0, self.JE):
-            for i in range(0, self.IE):
-                self.ez[i, j] = self.ga[i, j] * (self.dz[i, j] - self.iz[i, j])
-                self.iz[i, j] = self.iz[i, j] + self.gb[i, j] * self.ez[i, j]
-        return self.ez, self.iz
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Ez_Dz_CU(IE,JE,ez, ga, gb, dz, iz):
+        for j in range(0, JE):
+            for i in range(0, IE):
+                ez[i, j] = ga[i, j] * (dz[i, j] - iz[i, j])
+                iz[i, j] = iz[i, j] + gb[i, j] * ez[i, j]
+        return ez, iz
 
-    def Hx_inc_CU(self):
-        for j in range(0, self.JE - 1):
-            self.hx_inc[j] = self.hx_inc[j] + .5 * (self.ez_inc[j] - self.ez_inc[j + 1])
-        return self.hx_inc
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Hx_inc_CU(JE,hx_inc, ez_inc):
+        for j in range(0, JE - 1):
+            hx_inc[j] = hx_inc[j] + .5 * (ez_inc[j] - ez_inc[j + 1])
+        return hx_inc
 
-    def Hx_CU(self):
-        for j in range(0, self.JE - 1):
-            for i in range(0, self.IE - 1):
-                curl_e = self.ez[i][j] - self.ez[i][j + 1]
-                self.ihx[i][j] = self.ihx[i][j] + curl_e
-                self.hx[i][j] = self.fj3[j] * self.hx[i][j] + self.fj2[j] * \
-                                (.5 * curl_e + self.fi1[i] * self.ihx[i][j])
-        return self.ihx, self.hx
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Hx_CU(IE,JE,ez, hx, ihx, fj3, fj2, fi1):
+        for j in range(0, JE - 1):
+            for i in range(0, IE - 1):
+                curl_e = ez[i][j] - ez[i][j + 1]
+                ihx[i][j] = ihx[i][j] + curl_e
+                hx[i][j] = fj3[j] * hx[i][j] + fj2[j] * \
+                           (.5 * curl_e + fi1[i] * ihx[i][j])
+        return ihx, hx
 
-    def Hx_inc_val_CU(self):
-        for i in range(self.ia, self.ib + 1):
-            self.hx[i][self.ja - 1] = self.hx[i][self.ja - 1] + .5 * self.ez_inc[self.ja]
-            self.hx[i][self.jb] = self.hx[i][self.jb] - .5 * self.ez_inc[self.jb]
-        return self.hx
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Hx_inc_val_CU(ia,ib,ja,jb,hx, ez_inc):
+        for i in range(ia, ib + 1):
+            hx[i][ja - 1] = hx[i][ja - 1] + .5 * ez_inc[ja]
+            hx[i][jb] = hx[i][jb] - .5 * ez_inc[jb]
+        return hx
 
-    def Hy_CU(self):
-        for j in range(0, self.JE):
-            for i in range(0, self.IE - 1):
-                curl_e = self.ez[i][j] - self.ez[i + 1][j]
-                self.ihy[i][j] = self.ihy[i][j] + curl_e
-                self.hy[i][j] = self.fi3[i] * self.hy[i][j] - self.fi2[i] * \
-                                (.5 * curl_e + self.fi1[j] * self.ihy[i][j])
-        return self.ihy, self.hy
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Hy_CU(IE,JE,hy, ez, ihy, fi3, fi2, fi1):
+        for j in range(0, JE):
+            for i in range(0, IE - 1):
+                curl_e = ez[i][j] - ez[i + 1][j]
+                ihy[i][j] = ihy[i][j] + curl_e
+                hy[i][j] = fi3[i] * hy[i][j] - fi2[i] * \
+                           (.5 * curl_e + fi1[j] * ihy[i][j])
+        return ihy, hy
 
-    def Hy_inc_CU(self):
-        for j in range(self.ja, self.jb + 1):
-            self.hy[self.ia - 1][j] = self.hy[self.ia - 1][j] - .5 * self.ez_inc[j]
-            self.hy[self.ib][j] = self.hy[self.ib][j] + .5 * self.ez_inc[j]
-        return self.hy
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Hy_inc_CU(ia,ib,ja,jb,hy, ez_inc):
+        for j in range(ja, jb + 1):
+            hy[ia - 1][j] = hy[ia - 1][j] - .5 * ez_inc[j]
+            hy[ib][j] = hy[ib][j] + .5 * ez_inc[j]
+        return hy
 
-    def Power_Calc(self):
-        for j in range(0, self.JE):
-            for i in range(0, self.IE):
-                self.Pz[i][j] = M.sqrt(
-                    M.pow(-self.ez[i][j] * self.hy[i][j], 2) + M.pow(self.ez[i][j] * self.hx[i][j], 2))
-        return self.Pz
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def Power_Calc(IE,JE,Pz, ez, hy, hx):
+        for j in range(0, JE):
+            for i in range(0, IE):
+                Pz[i][j] = M.sqrt(M.pow(-ez[i][j] * hy[i][j], 2) + M.pow(ez[i][j] * hx[i][j], 2))
+        return Pz
 
     # -------------------------------- KERNELS ---------------------------
 
@@ -286,7 +283,7 @@ class FDTD_2D:
             self.T = self.T + 1
             # MAIND FDTD LOOP
             # ez_incd, hx_incd = cuda.to_device(ez_inc, stream=stream), cuda.to_device(hx_inc, stream=stream)
-            self.ez_inc = FDTD_2D.Ez_inc_CU(self)
+            self.ez_inc = FDTD_2D.Ez_inc_CU(self.JE,self.ez_inc,self.hx_inc)
             # ez_inc, hx_inc = ez_incd.copy_to_host(stream=stream), hx_incd.copy_to_host(stream=stream)
             self.ez_inc[0] = self.ez_inc_low_m2
             self.ez_inc_low_m2 = self.ez_inc_low_m1
@@ -294,46 +291,42 @@ class FDTD_2D:
             self.ez_inc[self.JE - 1] = self.ez_inc_high_m2
             self.ez_inc_high_m2 = self.ez_inc_high_m1
             self.ez_inc_high_m1 = self.ez_inc[self.JE - 2]
-            self.dz = FDTD_2D.Dz_CU(self)
-            if self.T < 200:
+            self.dz = FDTD_2D.Dz_CU(self.IE,self.JE,self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
+            if self.T < 300:
                 self.pulse = FDTD_2D.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
                 # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
                 # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
                 self.dz[round(self.IE / 2)][3] = self.pulse  # plane wave
             else:
                 pass
-            self.dz = FDTD_2D.Dz_inc_val_CU(self)
-            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self)
-            self.hx_inc = FDTD_2D.Hx_inc_CU(self)
-            self.ihx, self.hx = FDTD_2D.Hx_CU(self)
-            self.hx = FDTD_2D.Hx_inc_val_CU(self)
-            self.ihy, hy = FDTD_2D.Hy_CU(self)
-            self.hy = FDTD_2D.Hy_inc_CU(self)
-            self.Pz = FDTD_2D.Power_Calc(self)
+            self.dz = FDTD_2D.Dz_inc_val_CU(self.ia,self.ib,self.ja,self.jb,self.dz, self.hx_inc)
+            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self.IE,self.JE,self.ez, self.ga, self.gb, self.dz, self.iz)
+            self.hx_inc = FDTD_2D.Hx_inc_CU(self.JE, self.hx_inc, self.ez_inc)
+            self.ihx, self.hx = FDTD_2D.Hx_CU(self.IE, self.JE, self.ez, self.hx, self.ihx, self.fj3, self.fj2, self.fi1)
+            self.hx = FDTD_2D.Hx_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.hx, self.ez_inc)
+            self.ihy, hy = FDTD_2D.Hy_CU(self.IE, self.JE, self.hy, self.ez, self.ihy, self.fi3, self.fi2, self.fi1)
+            self.hy = FDTD_2D.Hy_inc_CU(self.ia, self.ib, self.ja, self.jb, self.hy, self.ez_inc)
+            self.Pz = FDTD_2D.Power_Calc(self.IE, self.JE, self.Pz, self.ez, self.hy, self.hx)
             self.netend = time.time()
             # print("Time netto : " + str((netend - net)) + "[s]")
             self.nett_time_sum += self.netend - self.net
             # Drawing of the EM and FT plots
             if self.LetsPlot == 1:
                 if self.T % self.frame_interval == 0:
-                    x = np.linspace(0, self.JE, self.JE)
-                    y = np.linspace(0, self.IE, self.IE)
-                    # values = range(len(x))
-                    self.X, self.Y = np.meshgrid(x, y)
                     self.Z = self.Pz[:][:]  # Power - W/m^2s
                     # self.INTEGRATE.append(self.Z)
                     # self.YY = np.trapz(self.INTEGRATE, axis=0) / self.window
                     # if len(self.INTEGRATE) >= self.window:
                     #     del self.INTEGRATE[0]
-                    self.title = self.ay.annotate("Time :" + '{:<.4e}'.format(self.T * self.dt * 1 * 10 ** 15) + " fs",
+                    title = self.ay.annotate("Time :" + '{:<.4e}'.format(self.T * self.dt * 1 * 10 ** 15) + " fs",
                                                   (1, 0.5),
                                                   xycoords=self.ay.get_window_extent,
                                                   xytext=(-round(self.JE * 2), self.IE - 5),
                                                   textcoords="offset points", fontsize=9, color='white')
-                    self.ims2 = self.ay.imshow(self.Z, cmap=cm.tab20c, extent=[0, self.JE, 0, self.IE])
-                    self.ims2.set_interpolation('bilinear')
-                    self.ims4 = self.ay.scatter(self.x_points, self.y_points, c='grey', s=70, alpha=0.01)
-                    self.ims.append([self.ims2, self.ims4, self.title])
+                    ims2 = self.ay.imshow(self.Z, cmap=cm.tab20c, extent=[0, self.JE, 0, self.IE])
+                    ims2.set_interpolation('bilinear')
+                    ims4 = self.ay.scatter(self.x_points, self.y_points, c='grey', s=70, alpha=0.01)
+                    self.ims.append([ims2, ims4, title])
                     # print("Punkt : " + str(T))
                 else:
                     pass
