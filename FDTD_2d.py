@@ -8,6 +8,7 @@ from C import C
 import cupy as cp
 import cairo
 
+
 class FDTD_2D:
     def __init__(self):
         # mpl.use('Agg')
@@ -17,7 +18,7 @@ class FDTD_2D:
         np.seterr(divide='ignore', invalid='ignore')
         self.s = time.time()
         self.nett_time_sum = 0
-        self.frame_interval = 8
+        self.frame_interval = 16
         self.ims = []
         self.flag = 1
         self.data_type1 = np.float32
@@ -48,7 +49,7 @@ class FDTD_2D:
         self.ib = self.IE - self.ia - 1
         self.ja = 7
         self.jb = self.JE - self.ja - 1
-        self.nsteps = 1000
+        self.nsteps = 1500
         self.T = 0
         self.medium_eps = 1. / (self.epsilon_medium + self.sigma_medium * self.dt / self.epsz)
         self.medium_sigma = self.sigma_medium * self.dt / self.epsz
@@ -110,14 +111,14 @@ class FDTD_2D:
     # -------------------------------- KERNELS ---------------------------
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Ez_inc_CU(JE,ez_inc, hx_inc):
+    def Ez_inc_CU(JE, ez_inc, hx_inc):
         for j in range(1, JE):
             ez_inc[j] = ez_inc[j] + 0.5 * (hx_inc[j - 1] - hx_inc[j])
         return ez_inc
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Dz_CU(IE,JE,dz, hx, hy, gi2, gi3, gj2, gj3):
+    def Dz_CU(IE, JE, dz, hx, hy, gi2, gi3, gj2, gj3):
         for j in range(1, JE):
             for i in range(1, IE):
                 dz[i][j] = gi3[i] * gj3[j] * dz[i][j] + \
@@ -128,7 +129,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Dz_inc_val_CU(ia,ib,ja,jb,dz, hx_inc):
+    def Dz_inc_val_CU(ia, ib, ja, jb, dz, hx_inc):
         for i in range(ia, ib + 1):
             dz[i][ja] = dz[i][ja] + 0.5 * hx_inc[ja - 1]
             dz[i][jb] = dz[i][jb] - 0.5 * hx_inc[jb]
@@ -136,7 +137,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Ez_Dz_CU(IE,JE,ez, ga, gb, dz, iz):
+    def Ez_Dz_CU(IE, JE, ez, ga, gb, dz, iz):
         for j in range(0, JE):
             for i in range(0, IE):
                 ez[i, j] = ga[i, j] * (dz[i, j] - iz[i, j])
@@ -145,14 +146,14 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Hx_inc_CU(JE,hx_inc, ez_inc):
+    def Hx_inc_CU(JE, hx_inc, ez_inc):
         for j in range(0, JE - 1):
             hx_inc[j] = hx_inc[j] + .5 * (ez_inc[j] - ez_inc[j + 1])
         return hx_inc
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Hx_CU(IE,JE,ez, hx, ihx, fj3, fj2, fi1):
+    def Hx_CU(IE, JE, ez, hx, ihx, fj3, fj2, fi1):
         for j in range(0, JE - 1):
             for i in range(0, IE - 1):
                 curl_e = ez[i][j] - ez[i][j + 1]
@@ -163,7 +164,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Hx_inc_val_CU(ia,ib,ja,jb,hx, ez_inc):
+    def Hx_inc_val_CU(ia, ib, ja, jb, hx, ez_inc):
         for i in range(ia, ib + 1):
             hx[i][ja - 1] = hx[i][ja - 1] + .5 * ez_inc[ja]
             hx[i][jb] = hx[i][jb] - .5 * ez_inc[jb]
@@ -171,7 +172,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Hy_CU(IE,JE,hy, ez, ihy, fi3, fi2, fi1):
+    def Hy_CU(IE, JE, hy, ez, ihy, fi3, fi2, fi1):
         for j in range(0, JE):
             for i in range(0, IE - 1):
                 curl_e = ez[i][j] - ez[i + 1][j]
@@ -182,7 +183,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Hy_inc_CU(ia,ib,ja,jb,hy, ez_inc):
+    def Hy_inc_CU(ia, ib, ja, jb, hy, ez_inc):
         for j in range(ja, jb + 1):
             hy[ia - 1][j] = hy[ia - 1][j] - .5 * ez_inc[j]
             hy[ib][j] = hy[ib][j] + .5 * ez_inc[j]
@@ -190,7 +191,7 @@ class FDTD_2D:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def Power_Calc(IE,JE,Pz, ez, hy, hx):
+    def Power_Calc(IE, JE, Pz, ez, hy, hx):
         for j in range(0, JE):
             for i in range(0, IE):
                 Pz[i][j] = M.sqrt(M.pow(-ez[i][j] * hy[i][j], 2) + M.pow(ez[i][j] * hx[i][j], 2))
@@ -239,24 +240,27 @@ class FDTD_2D:
             self.fj3[self.JE - 2 - i] = (1. - xn) / (1. + xn)
         return self.gi2, self.gi3, self.fi1, self.fi2, self.fi3, self.gj2, self.gj3, self.fj1, self.fj2, self.fj3
 
-    def shapes(self):
+    def ShapeGen(self):
         surface = cairo.ImageSurface.create_for_data(
             self.data, cairo.FORMAT_ARGB32, self.IE, self.JE)
         cr = cairo.Context(surface)
 
         cr.set_source_rgb(1.0, 1.0, 1.0)
         cr.paint()
-
-        cr.rectangle(0, 50, 200, 5)
-        cr.rectangle(210, 50, 50, 5)
-        cr.rectangle(270, 50, 50, 5)
-        cr.rectangle(330, 50, 300, 5)
-
-        # cr.rectangle(190, 60, 5, 200)
-        # CIRCLE
-        cr.arc(150, 250, 50, 0, 2 * M.pi)
-        cr.set_line_width(5)
-        cr.close_path()
+        for i in range(0, int(np.random.randint(1, 2, 1))):
+            x1 = np.random.randint(0, self.IE, 1)
+            x2 = np.random.randint(0, self.IE, 1)
+            y1 = np.random.randint(0, self.JE, 1)
+            y2 = np.random.randint(0, self.JE, 1)
+            cr.rectangle(x1, x2, y1, y2)
+        for i in range(0, int(np.random.randint(1, 2, 1))):
+            x1 = np.random.randint(0, self.IE, 1)
+            x2 = np.random.randint(0, self.IE, 1)
+            y1 = np.random.randint(0, self.JE, 1)
+            y2 = np.random.randint(0, self.JE, 1)
+            cr.arc(x1, x2, y1, y2, 2 * M.pi)
+            cr.set_line_width(5)
+            cr.close_path()
 
         cr.set_source_rgb(1.0, 0.0, 0.0)
         cr.fill()
@@ -283,7 +287,7 @@ class FDTD_2D:
             self.T = self.T + 1
             # MAIND FDTD LOOP
             # ez_incd, hx_incd = cuda.to_device(ez_inc, stream=stream), cuda.to_device(hx_inc, stream=stream)
-            self.ez_inc = FDTD_2D.Ez_inc_CU(self.JE,self.ez_inc,self.hx_inc)
+            self.ez_inc = FDTD_2D.Ez_inc_CU(self.JE, self.ez_inc, self.hx_inc)
             # ez_inc, hx_inc = ez_incd.copy_to_host(stream=stream), hx_incd.copy_to_host(stream=stream)
             self.ez_inc[0] = self.ez_inc_low_m2
             self.ez_inc_low_m2 = self.ez_inc_low_m1
@@ -291,7 +295,7 @@ class FDTD_2D:
             self.ez_inc[self.JE - 1] = self.ez_inc_high_m2
             self.ez_inc_high_m2 = self.ez_inc_high_m1
             self.ez_inc_high_m1 = self.ez_inc[self.JE - 2]
-            self.dz = FDTD_2D.Dz_CU(self.IE,self.JE,self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
+            self.dz = FDTD_2D.Dz_CU(self.IE, self.JE, self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
             if self.T < 300:
                 self.pulse = FDTD_2D.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
                 # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
@@ -299,10 +303,11 @@ class FDTD_2D:
                 self.dz[round(self.IE / 2)][3] = self.pulse  # plane wave
             else:
                 pass
-            self.dz = FDTD_2D.Dz_inc_val_CU(self.ia,self.ib,self.ja,self.jb,self.dz, self.hx_inc)
-            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self.IE,self.JE,self.ez, self.ga, self.gb, self.dz, self.iz)
+            self.dz = FDTD_2D.Dz_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.dz, self.hx_inc)
+            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self.IE, self.JE, self.ez, self.ga, self.gb, self.dz, self.iz)
             self.hx_inc = FDTD_2D.Hx_inc_CU(self.JE, self.hx_inc, self.ez_inc)
-            self.ihx, self.hx = FDTD_2D.Hx_CU(self.IE, self.JE, self.ez, self.hx, self.ihx, self.fj3, self.fj2, self.fi1)
+            self.ihx, self.hx = FDTD_2D.Hx_CU(self.IE, self.JE, self.ez, self.hx, self.ihx, self.fj3, self.fj2,
+                                              self.fi1)
             self.hx = FDTD_2D.Hx_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.hx, self.ez_inc)
             self.ihy, hy = FDTD_2D.Hy_CU(self.IE, self.JE, self.hy, self.ez, self.ihy, self.fi3, self.fi2, self.fi1)
             self.hy = FDTD_2D.Hy_inc_CU(self.ia, self.ib, self.ja, self.jb, self.hy, self.ez_inc)
@@ -319,13 +324,13 @@ class FDTD_2D:
                     # if len(self.INTEGRATE) >= self.window:
                     #     del self.INTEGRATE[0]
                     title = self.ay.annotate("Time :" + '{:<.4e}'.format(self.T * self.dt * 1 * 10 ** 15) + " fs",
-                                                  (1, 0.5),
-                                                  xycoords=self.ay.get_window_extent,
-                                                  xytext=(-round(self.JE * 2), self.IE - 5),
-                                                  textcoords="offset points", fontsize=9, color='white')
-                    ims2 = self.ay.imshow(self.Z, cmap=cm.tab20c, extent=[0, self.JE, 0, self.IE])
+                                             (1, 0.5),
+                                             xycoords=self.ay.get_window_extent,
+                                             xytext=(-round(self.JE * 2), self.IE - 5),
+                                             textcoords="offset points", fontsize=9, color='white')
+                    ims2 = self.ay.imshow(self.Z, cmap=cm.twilight, extent=[0, self.JE, 0, self.IE])
                     ims2.set_interpolation('bilinear')
-                    ims4 = self.ay.scatter(self.x_points, self.y_points, c='grey', s=70, alpha=0.01)
+                    ims4 = self.ay.scatter(self.x_points, self.y_points, c='blue', s=70, alpha=0.01)
                     self.ims.append([ims2, ims4, title])
                     # print("Punkt : " + str(T))
                 else:
@@ -369,7 +374,7 @@ class FDTD_2D:
 
 SIM = FDTD_2D()
 SIM.PML()
-SIM.shapes()
+SIM.ShapeGen()
 SIM.medium()
 SIM.CORE()
 SIM.plot_sim()
