@@ -19,372 +19,377 @@ from scipy.signal import butter, lfilter, freqz
 import torch.fft as fft
 import torch
 
+
 # from vispy import plot as vp
+class FDTD_2D:
+    def __init__(self):
+        # mpl.use('Agg')
+        self.LetsPlot = 1
+        jit(device=True)
+        np.seterr(divide='ignore', invalid='ignore')
+        self.s = time.time()
+        self.nett_time_sum = 0
+        self.frame_interval = 8
+        self.ims = []
+        self.wstart = 10
+        self.fwidth = 5 + self.wstart
+        self.a = 2
+        self.b = 2
+        self.i = 0
+        self.j = 0
+        self.flag = 1
+        self.data_type1 = np.float32
+        self.cc = C()
+        self.IE = self.JE = 500 # GRID
+        self.npml = 8
+        self.freq = FDTD_2D.data_type(self, 454.231E12)  # red light (666nm)
+        self.n_index = self.cc.nSiO2
+        self.n_sigma = self.cc.sigmaSiO2
+        self.epsilon = FDTD_2D.data_type(self, self.n_index)
+        self.sigma = FDTD_2D.data_type(self, self.n_sigma)
+        self.epsilon_medium = FDTD_2D.data_type(self, 1.003)
+        self.sigma_medium = FDTD_2D.data_type(self, 0.)
+        self.wavelength = self.cc.c0 / (self.n_index * self.freq)
+        self.vm = self.wavelength * self.freq
+        self.dx = 10
+        self.ddx = FDTD_2D.data_type(self,self.wavelength / self.dx)  # Cells Size
+        # dt = data_type((ddx / cc.c0) *  M.sqrt(2),flag) # Time step
+        #   CFL stability condition- Lax Equivalence Theorem
+        self.dt = 1 / (self.vm * M.sqrt(1 / (self.ddx ** 2) + 1 / (self.ddx ** 2)))  # Tiem step\
+        self.z_max = FDTD_2D.data_type(self, 0)
+        self.epsz = FDTD_2D.data_type(self,8.854E-12)
+        self.spread = FDTD_2D.data_type(self, 8)
+        self.t0 = FDTD_2D.data_type(self, 1)
+        self.ic = self.IE / 2
+        self.jc = self.JE / 2
+        self.ia = 7  # total scattered field boundaries
+        self.ib = self.IE - self.ia - 1
+        self.ja = 7
+        self.jb = self.JE - self.ja - 1
+        self.nsteps = 1500
+        self.T = 0
+        self.medium_eps = 1. / (self.epsilon_medium + self.sigma_medium * self.dt / self.epsz)
+        self.medium_sigma = self.sigma_medium * self.dt / self.epsz
+        self.INTEGRATE = []
+        self.x_points = []
+        self.y_points = []
+        self.window = 10
+        self.k_vec = 2 * M.pi / self.wavelength
+        self.omega = 2 * M.pi * self.freq
 
-# mpl.use('Agg')
-jit(device=True)
+        self.ez_inc_low_m2 = FDTD_2D.data_type(self, 0.)
+        self.ez_inc_low_m1 = FDTD_2D.data_type(self, 0.)
 
-s = time.time()
-nett_time_sum = 0
-np.seterr(divide='ignore', invalid='ignore')
+        self.ez_inc_high_m2 = FDTD_2D.data_type(self, 0.)
+        self.ez_inc_high_m1 = FDTD_2D.data_type(self, 0.)
 
+        self.dz = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.iz = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.ez = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.hx = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.hy = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.ihx = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.ihy = np.zeros((self.IE, self.JE), dtype=self.data_type1)
+        self.ga = np.ones((self.IE, self.JE), dtype=self.data_type1) * self.medium_eps  # main medium epsilon
+        self.gb = np.zeros((self.IE, self.JE), dtype=self.data_type1) * self.medium_sigma  # main medium sigma
+        self.Pz = np.zeros((self.IE, self.JE), dtype=self.data_type1)
 
-# -------------------------------- KERNELS ---------------------------
-@jit(nopython=True, parallel=True)
-def Ez_inc_CU(ez_inc, hx_inc):
-    for j in range(1, JE):
-        ez_inc[j] = ez_inc[j] + 0.5 * (hx_inc[j - 1] - hx_inc[j])
-    return ez_inc
+        self.gi2 = np.ones(self.IE, dtype=self.data_type1)
+        self.gi3 = np.ones(self.IE, dtype=self.data_type1)
+        self.fi1 = np.zeros(self.IE, dtype=self.data_type1)
+        self.fi2 = np.ones(self.IE, dtype=self.data_type1)
+        self.fi3 = np.ones(self.IE, dtype=self.data_type1)
 
+        self.gj2 = np.ones(self.JE, dtype=self.data_type1)
+        self.gj3 = np.ones(self.JE, dtype=self.data_type1)
+        self.fj1 = np.zeros(self.JE, dtype=self.data_type1)
+        self.fj2 = np.ones(self.JE, dtype=self.data_type1)
+        self.fj3 = np.ones(self.JE, dtype=self.data_type1)
 
-@jit(nopython=True, parallel=True)
-def Dz_CU(dz, hx, hy, gi2, gi3, gj2, gj3):
-    for j in range(1, JE):
-        for i in range(1, IE):
-            dz[i][j] = gi3[i] * gj3[j] * dz[i][j] + \
-                       gi2[i] * gj2[j] * 0.5 * \
-                       (hy[i][j] - hy[i - 1][j] -
-                        hx[i][j] + hx[i][j - 1])
-    return dz
+        self.ez_inc = np.zeros(self.JE, dtype=self.data_type1)
+        self.hx_inc = np.zeros(self.JE, dtype=self.data_type1)
+        self.netend = None
+        self.nett_time_sum = None
+        self.pulse = None
+        self.net = None
+        self.data = None
+        self.shape2 = None
+        self.shape1 = None
+        self.ims2 = None
+        self.ims4 = None
+        self.title = None
+        self.YY = None
+        self.Z = None
+        self.Y = None
+        self.X = None
 
+    # -------------------------------- KERNELS ---------------------------
+    @jit(nopython=True, parallel=True)
+    def Ez_inc_CU(self):
+        for j in range(1, self.JE):
+            self.ez_inc[j] = self.ez_inc[j] + 0.5 * (self.hx_inc[j - 1] - self.hx_inc[j])
+        return self.ez_inc
 
-@jit(nopython=True, parallel=True)
-def Dz_inc_val_CU(dz, hx_inc):
-    for i in range(ia, ib + 1):
-        dz[i][ja] = dz[i][ja] + 0.5 * hx_inc[ja - 1]
-        dz[i][jb] = dz[i][jb] - 0.5 * hx_inc[jb]
-    return dz
+    @jit(nopython=True, parallel=True)
+    def Dz_CU(self):
+        for j in range(1, self.JE):
+            for i in range(1, self.IE):
+                self.dz[i][j] = self.gi3[i] * self.gj3[j] * self.dz[i][j] + \
+                                self.gi2[i] * self.gj2[j] * 0.5 * \
+                                (self.hy[i][j] - self.hy[i - 1][j] -
+                                 self.hx[i][j] + self.hx[i][j - 1])
+        return self.dz
 
+    @jit(nopython=True, parallel=True)
+    def Dz_inc_val_CU(self):
+        for i in range(self.ia, self.ib + 1):
+            self.dz[i][self.ja] = self.dz[i][self.ja] + 0.5 * self.hx_inc[self.ja - 1]
+            self.dz[i][self.jb] = self.dz[i][self.jb] - 0.5 * self.hx_inc[self.jb]
+        return self.dz
 
-@jit(nopython=True, parallel=True)
-def Ez_Dz_CU(ez, ga, gb, dz, iz):
-    for j in range(0, JE):
-        for i in range(0, IE):
-            ez[i, j] = ga[i, j] * (dz[i, j] - iz[i, j])
-            iz[i, j] = iz[i, j] + gb[i, j] * ez[i, j]
-    return ez, iz
+    @jit(nopython=True, parallel=True)
+    def Ez_Dz_CU(self):
+        for j in range(0, self.JE):
+            for i in range(0, self.IE):
+                self.ez[i, j] = self.ga[i, j] * (self.dz[i, j] - self.iz[i, j])
+                self.iz[i, j] = self.iz[i, j] + self.gb[i, j] * self.ez[i, j]
+        return self.ez, self.iz
 
+    @jit(nopython=True, parallel=True)
+    def Hx_inc_CU(self):
+        for j in range(0, self.JE - 1):
+            self.hx_inc[j] = self.hx_inc[j] + .5 * (self.ez_inc[j] - self.ez_inc[j + 1])
+        return self.hx_inc
 
-@jit(nopython=True, parallel=True)
-def Hx_inc_CU(hx_inc, ez_inc):
-    for j in range(0, JE - 1):
-        hx_inc[j] = hx_inc[j] + .5 * (ez_inc[j] - ez_inc[j + 1])
-    return hx_inc
+    @jit(nopython=True, parallel=True)
+    def Hx_CU(self):
+        for j in range(0, self.JE - 1):
+            for i in range(0, self.IE - 1):
+                curl_e = self.ez[i][j] - self.ez[i][j + 1]
+                self.ihx[i][j] = self.ihx[i][j] + curl_e
+                self.hx[i][j] = self.fj3[j] * self.hx[i][j] + self.fj2[j] * \
+                                (.5 * curl_e + self.fi1[i] * self.ihx[i][j])
+        return self.ihx, self.hx
 
+    @jit(nopython=True, parallel=True)
+    def Hx_inc_val_CU(self):
+        for i in range(self.ia, self.ib + 1):
+            self.hx[i][self.ja - 1] = self.hx[i][self.ja - 1] + .5 * self.ez_inc[self.ja]
+            self.hx[i][self.jb] = self.hx[i][self.jb] - .5 * self.ez_inc[self.jb]
+        return self.hx
 
-@jit(nopython=True, parallel=True)
-def Hx_CU(ez, hx, ihx, fj3, fj2, fi1):
-    for j in range(0, JE - 1):
-        for i in range(0, IE - 1):
-            curl_e = ez[i][j] - ez[i][j + 1]
-            ihx[i][j] = ihx[i][j] + curl_e
-            hx[i][j] = fj3[j] * hx[i][j] + fj2[j] * \
-                       (.5 * curl_e + fi1[i] * ihx[i][j])
-    return ihx, hx
+    @jit(nopython=True, parallel=True)
+    def Hy_CU(self):
+        for j in range(0, self.JE):
+            for i in range(0, self.IE - 1):
+                curl_e = self.ez[i][j] - self.ez[i + 1][j]
+                self.ihy[i][j] = self.ihy[i][j] + curl_e
+                self.hy[i][j] = self.fi3[i] * self.hy[i][j] - self.fi2[i] * \
+                                (.5 * curl_e + self.fi1[j] * self.ihy[i][j])
+        return self.ihy, self.hy
 
+    @jit(nopython=True, parallel=True)
+    def Hy_inc_CU(self):
+        for j in range(self.ja, self.jb + 1):
+            self.hy[self.ia - 1][j] = self.hy[self.ia - 1][j] - .5 * self.ez_inc[j]
+            self.hy[self.ib][j] = self.hy[self.ib][j] + .5 * self.ez_inc[j]
+        return self.hy
 
-@jit(nopython=True, parallel=True)
-def Hx_inc_val_CU(hx, ez_inc):
-    for i in range(ia, ib + 1):
-        hx[i][ja - 1] = hx[i][ja - 1] + .5 * ez_inc[ja]
-        hx[i][jb] = hx[i][jb] - .5 * ez_inc[jb]
-    return hx
+    @jit(nopython=True, parallel=True)
+    def Power_Calc(self):
+        for j in range(0, self.JE):
+            for i in range(0, self.IE):
+                self.Pz[i][j] = M.sqrt(
+                    M.pow(-self.ez[i][j] * self.hy[i][j], 2) + M.pow(self.ez[i][j] * self.hx[i][j], 2))
+        return self.Pz
 
+    # -------------------------------- KERNELS ---------------------------
 
-@jit(nopython=True, parallel=True)
-def Hy_CU(hy, ez, ihy, fi3, fi2, fi1):
-    for j in range(0, JE):
-        for i in range(0, IE - 1):
-            curl_e = ez[i][j] - ez[i + 1][j]
-            ihy[i][j] = ihy[i][j] + curl_e
-            hy[i][j] = fi3[i] * hy[i][j] - fi2[i] * \
-                       (.5 * curl_e + fi1[j] * ihy[i][j])
-    return ihy, hy
+    # ------------------------------- FUNCTIONS --------------------------
+    def data_type(self, data):
+        if self.flag == 1:
+            return np.float32(data)
+        else:
+            return np.float64(data)
 
+    # PML Definition
+    def PML(self):
+        for i in range(self.npml):
+            xnum = self.npml - i
+            xd = self.npml
+            xxn = xnum / xd
+            xn = 0.33333 * pow(xxn, 3)
+            self.gi2[i] = 1. / (1. + xn)
+            self.gi2[self.IE - 1 - i] = 1. / (1. + xn)
+            self.gi3[i] = (1. - xn) / (1. + xn)
+            self.gi3[self.IE - i - 1] = (1. - xn) / (1. + xn)
+            xxn = (xnum - .5) / xd
+            xn = 0.33333 * pow(xxn, 3)
+            self.fi1[i] = xn
+            self.fi1[self.IE - 2 - i] = xn
+            self.fi2[i] = 1.0 / (1.0 + xn)
+            self.fi2[self.IE - 2 - i] = 1.0 / (1.0 + xn)
+            self.fi3[i] = (1.0 - xn) / (1.0 + xn)
+            self.fi3[self.IE - 2 - i] = (1.0 - xn) / (1.0 + xn)
 
-@jit(nopython=True, parallel=True)
-def Hy_inc_CU(hy, ez_inc):
-    for j in range(ja, jb + 1):
-        hy[ia - 1][j] = hy[ia - 1][j] - .5 * ez_inc[j]
-        hy[ib][j] = hy[ib][j] + .5 * ez_inc[j]
-    return hy
+            self.gj2[i] = 1. / (1. + xn)
+            self.gj2[self.JE - 1 - i] = 1. / (1. + xn)
+            self.gj3[i] = (1.0 - xn) / (1. + xn)
+            self.gj3[self.JE - i - 1] = (1. - xn) / (1. + xn)
+            xxn = (xnum - .5) / xd
+            xn = 0.33333 * pow(xxn, 3)
+            self.fj1[i] = xn
+            self.fj1[self.JE - 2 - i] = xn
+            self.fj2[i] = 1. / (1. + xn)
+            self.fj2[self.JE - 2 - i] = 1. / (1. + xn)
+            self.fj3[i] = (1. - xn) / (1. + xn)
+            self.fj3[self.JE - 2 - i] = (1. - xn) / (1. + xn)
+        return self.gi2, self.gi3, self.fi1, self.fi2, self.fi3, self.gj2, self.gj3, self.fj1, self.fj2, self.fj3
 
+    def shapes(self):
+        self.data = np.zeros((self.IE, self.JE, 4), dtype=np.uint8)
+        surface = cairo.ImageSurface.create_for_data(
+            self.data, cairo.FORMAT_ARGB32, self.IE, self.JE)
+        cr = cairo.Context(surface)
 
-@jit(nopython=True, parallel=True)
-def Power_Calc(Pz, ez, hy, hx):
-    for j in range(0, JE):
-        for i in range(0, IE):
-            Pz[i][j] = M.sqrt(M.pow(-ez[i][j] * hy[i][j], 2) + M.pow(ez[i][j] * hx[i][j], 2))
-    return Pz
+        cr.set_source_rgb(1.0, 1.0, 1.0)
+        cr.paint()
 
+        cr.rectangle(0, 50, 200, 5)
+        cr.rectangle(210, 50, 50, 5)
+        cr.rectangle(270, 50, 50, 5)
+        cr.rectangle(330, 50, 300, 5)
 
-# -------------------------------- KERNELS ---------------------------
+        # cr.rectangle(190, 60, 5, 200)
+        # CIRCLE
+        cr.arc(150, 250, 50, 0, 2 * M.pi)
+        cr.set_line_width(5)
+        cr.close_path()
 
-# ------------------------------- FUNCTIONS --------------------------
-def data_type(data, flag):
-    if flag == 1:
-        return np.float32(data)
-    else:
-        return np.float64(data)
+        cr.set_source_rgb(1.0, 0.0, 0.0)
+        cr.fill()
 
+        self.shape1 = self.data[:, :, 0].shape[0]
+        self.shape2 = self.data[:, :, 0].shape[1]
 
-# PML Definition
-def PML(npml, IE, JE, gi2, gi3, fi1, fi2, fi3, gj2, gj3, fj1, fj2, fj3):
-    for i in range(npml):
-        xnum = npml - i
-        xd = npml
-        xxn = xnum / xd
-        xn = 0.33333 * pow(xxn, 3)
-        gi2[i] = 1. / (1. + xn)
-        gi2[IE - 1 - i] = 1. / (1. + xn)
-        gi3[i] = (1. - xn) / (1. + xn)
-        gi3[IE - i - 1] = (1. - xn) / (1. + xn)
-        xxn = (xnum - .5) / xd
-        xn = 0.33333 * pow(xxn, 3)
-        fi1[i] = xn
-        fi1[IE - 2 - i] = xn
-        fi2[i] = 1.0 / (1.0 + xn)
-        fi2[IE - 2 - i] = 1.0 / (1.0 + xn)
-        fi3[i] = (1.0 - xn) / (1.0 + xn)
-        fi3[IE - 2 - i] = (1.0 - xn) / (1.0 + xn)
+        return self.shape1, self.shape2, self.data
 
-        gj2[i] = 1. / (1. + xn)
-        gj2[JE - 1 - i] = 1. / (1. + xn)
-        gj3[i] = (1.0 - xn) / (1. + xn)
-        gj3[JE - i - 1] = (1. - xn) / (1. + xn)
-        xxn = (xnum - .5) / xd
-        xn = 0.33333 * pow(xxn, 3)
-        fj1[i] = xn
-        fj1[JE - 2 - i] = xn
-        fj2[i] = 1. / (1. + xn)
-        fj2[JE - 2 - i] = 1. / (1. + xn)
-        fj3[i] = (1. - xn) / (1. + xn)
-        fj3[JE - 2 - i] = (1. - xn) / (1. + xn)
-    return gi2, gi3, fi1, fi2, fi3, gj2, gj3, fj1, fj2, fj3
+    def medium(self):
+        for j in range(0, self.shape2):
+            for i in range(0, self.shape1):
+                if self.data[i, j, 0] <= 0:
+                    # print(data[i, j, 0])
+                    self.ga[j, i] = FDTD_2D.data_type(self, 1 / (self.epsilon + (self.sigma * self.dt / self.epsz)))
+                    self.gb[j, i] = FDTD_2D.data_type(self, self.sigma * self.dt / self.epsz)
+                    self.x_points.append(i)
+                    self.y_points.append(self.JE - j)
+                if self.data[i, j, 0] > 0:
+                    pass
+                    # print(data[i, j, 0])
+        return self.ga, self.gb, self.x_points, self.y_points, self.data, self.shape1, self.shape2
 
-
-def shapes(IE, JE, x_points, y_points):
-    data = np.zeros((IE, JE, 4), dtype=np.uint8)
-    surface = cairo.ImageSurface.create_for_data(
-        data, cairo.FORMAT_ARGB32, IE, JE)
-    cr = cairo.Context(surface)
-
-    cr.set_source_rgb(1.0, 1.0, 1.0)
-    cr.paint()
-
-    cr.rectangle(0, 50, 200, 5)
-    cr.rectangle(210, 50, 50, 5)
-    cr.rectangle(270, 50, 50, 5)
-    cr.rectangle(330, 50, 300, 5)
-
-    # cr.rectangle(190, 60, 5, 200)
-    # CIRCLE
-    cr.arc(150, 250, 50, 0, 2 * M.pi)
-    cr.set_line_width(5)
-    cr.close_path()
-
-    cr.set_source_rgb(1.0, 0.0, 0.0)
-    cr.fill()
-
-    shape1 = data[:, :, 0].shape[0]
-    shape2 = data[:, :, 0].shape[1]
-
-    return x_points, y_points, shape1, shape2, data
-
-
-def medium(ga, gb, x_points, y_points, data, shape1, shape2):
-    for j in range(0, shape2):
-        for i in range(0, shape1):
-            if data[i, j, 0] <= 0:
-                # print(data[i, j, 0])
-                ga[j, i] = data_type(1 / (epsilon + (sigma * dt / epsz)), flag)
-                gb[j, i] = data_type(sigma * dt / epsz, flag)
-                x_points.append(i)
-                y_points.append(JE - j)
-            if data[i, j, 0] > 0:
+    def CORE(self):
+        self.fig = plt.figure(figsize=(5, 5))
+        self.grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
+        self.ay = self.fig.add_subplot(self.grid[:, :])
+        # Cyclic Number of image snapping
+        for n in range(1, self.nsteps):
+            self.net = time.time()
+            self.T = self.T + 1
+            # MAIND FDTD LOOP
+            # ez_incd, hx_incd = cuda.to_device(ez_inc, stream=stream), cuda.to_device(hx_inc, stream=stream)
+            self.ez_inc = FDTD_2D.Ez_inc_CU(self)
+            # ez_inc, hx_inc = ez_incd.copy_to_host(stream=stream), hx_incd.copy_to_host(stream=stream)
+            self.ez_inc[0] = self.ez_inc_low_m2
+            self.ez_inc_low_m2 = self.ez_inc_low_m1
+            self.ez_inc_low_m1 = self.ez_inc[1]
+            self.ez_inc[self.JE - 1] = self.ez_inc_high_m2
+            self.ez_inc_high_m2 = self.ez_inc_high_m1
+            self.ez_inc_high_m1 = self.ez_inc[self.JE - 2]
+            self.dz = FDTD_2D.Dz_CU(self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
+            if self.T < 200:
+                self.pulse = FDTD_2D.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
+                # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
+                # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
+                self.dz[round(self.IE / 2)][3] = self.pulse  # plane wave
+            else:
                 pass
-                # print(data[i, j, 0])
-    return ga, gb, x_points, y_points, data, shape1, shape2
+            self.dz = FDTD_2D.Dz_inc_val_CU(self.dz, self.hx_inc)
+            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self.ez, self.ga, self.gb, self.dz, self.iz)
+            self.hx_inc = FDTD_2D.Hx_inc_CU(self.hx_inc, self.ez_inc)
+            self.ihx, self.hx = FDTD_2D.Hx_CU(self.ez, self.hx, self.ihx, self.fj3, self.fj2, self.fi1)
+            self.hx = FDTD_2D.Hx_inc_val_CU(self.hx, self.ez_inc)
+            self.ihy, hy = FDTD_2D.Hy_CU(self.hy, self.ez, self.ihy, self.fi3, self.fi2, self.fi1)
+            self.hy = FDTD_2D.Hy_inc_CU(self.hy, self.ez_inc)
+            self.Pz = FDTD_2D.Power_Calc(self.Pz, self.ez, self.hy, self.hx)
+            self.netend = time.time()
+            # print("Time netto : " + str((netend - net)) + "[s]")
+            self.nett_time_sum += self.netend - self.net
+            # Drawing of the EM and FT plots
+            if self.LetsPlot == 1:
+                if self.T % self.frame_interval == 0:
+                    x = np.linspace(0, self.JE, self.JE)
+                    y = np.linspace(0, self.IE, self.IE)
+                    values = range(len(x))
+                    self.X, self.Y = np.meshgrid(x, y)
+                    self.Z = self.Pz[:][:]  # Power - W/m^2s
+                    self.INTEGRATE.append(self.Z)
+                    self.YY = np.trapz(self.INTEGRATE, axis=0) / self.window
+                    if len(self.INTEGRATE) >= self.window:
+                        del self.INTEGRATE[0]
+                    self.title = self.ay.annotate("Time :" + '{:<.4e}'.format(self.T * self.dt * 1 * 10 ** 15) + " fs",
+                                                  (1, 0.5),
+                                                  xycoords=self.ay.get_window_extent,
+                                                  xytext=(-round(self.JE * 2), self.IE - 5),
+                                                  textcoords="offset points", fontsize=9, color='white')
+                    self.ims2 = self.ay.imshow(self.Z, cmap=cm.tab20c, extent=[0, self.JE, 0, self.IE])
+                    self.ims2.set_interpolation('bilinear')
+                    ims4 = self.ay.scatter(x_points, y_points, c='grey', s=70, alpha=0.01)
+                    self.ims.append([self.ims2, self.ims4, self.title])
+                    # print("Punkt : " + str(T))
+                else:
+                    pass
+
+    def plot_sim(self):
+        if self.LetsPlot == 1:
+            self.ay.set_xlabel("x [um]")
+            self.ay.set_ylabel("y [um]")
+            labels = [item.get_text() for item in self.ay.get_xticklabels()]
+            labels[0] = '0'
+            labels[1] = str(0.2 * self.IE / self.dx)
+            labels[2] = str(0.4 * self.IE / self.dx)
+            labels[3] = str(0.5 * self.IE / self.dx)
+            labels[4] = str(0.8 * self.IE / self.dx)
+            labels[5] = str(self.IE / self.dx)
+            self.ay.set_xticklabels(labels)
+            labels[1] = str(0.2 * self.JE / self.dx)
+            labels[2] = str(0.4 * self.JE / self.dx)
+            labels[3] = str(0.5 * self.JE / self.dx)
+            labels[4] = str(0.8 * self.JE / self.dx)
+            labels[5] = str(self.JE / self.dx)
+            self.ay.set_yticklabels(labels)
+
+            e = time.time()
+            print("Time brutto : " + str((e - self.s)) + "[s]")
+            print("Time netto SUM : " + str(self.nett_time_sum) + "[s]")
+            file_name = "2d_fdtd_Si_Cylinder_2"
+            # file_name = "./" + file_name + '.gif'
+            file_name = "./" + file_name + '.gif'
+            ani = animation.ArtistAnimation(self.fig, self.ims, interval=30, blit=True)
+            # ani.save(file_name, writer='pillow', fps=30, dpi=100)
+            # ani.save(file_name + '.mp4', fps = 30, extra_args = ['-vcodec', 'libx264'])
+            # ani.save(file_name, writer="imagemagick", fps=30)
+            print("OK")
+            plt.show()
+        else:
+            pass
+    # ------------------------------- FUNCTIONS --------------------------
 
 
-# ------------------------------- FUNCTIONS --------------------------
+SIM = FDTD_2D()
+SIM.PML()
+SIM.shapes()
+SIM.medium()
+SIM.CORE()
+SIM.plot_sim()
 
-flag = 1
-data_type1 = np.float32
-cc = C()
-IE = JE = 500  # size and PML parameter loop
-npml = 8
-freq = data_type(454.231E12, flag)  # red light (666nm) + H
-
-n_index = cc.nSiO2
-n_sigma = cc.sigmaSiO2
-epsilon = data_type(n_index, flag)
-sigma = data_type(n_sigma, flag)
-epsilon_medium = data_type(1.003, flag)
-sigma_medium = data_type(0., flag)
-
-wavelength = cc.c0 / (n_index * (freq))
-vm = wavelength * (freq)
-dx = 10
-# wavelength = (vm / (min(freq)))
-ddx = data_type(wavelength / dx, flag)  # Cells Size
-# dt = data_type((ddx / cc.c0) *  M.sqrt(2),flag) # Time step
-#   CFL stability condition- Lax Equivalence Theorem
-dt = 1 / (vm * M.sqrt(1 / (ddx ** 2) + 1 / (ddx ** 2)))  # Tiem step
-
-z_max = data_type(0, 1)
-epsz = data_type(8.854E-12, flag)
-spread = data_type(8, flag)
-t0 = data_type(1, flag)
-ic = IE / 2
-jc = JE / 2
-ia = 7  # total scattered field boundaries
-ib = IE - ia - 1
-ja = 7
-jb = JE - ja - 1
-nsteps = 1500
-T = 0
-
-medium_eps = 1. / (epsilon_medium + sigma_medium * dt / epsz)
-medium_sigma = sigma_medium * dt / epsz
-INTEGRATE = []
-x_points = []
-y_points = []
-window = 10
-k_vec = 2 * M.pi / wavelength
-omega = 2 * M.pi * freq
-
-ez_inc_low_m2 = data_type(0., flag)
-ez_inc_low_m1 = data_type(0., flag)
-
-ez_inc_high_m2 = data_type(0., flag)
-ez_inc_high_m1 = data_type(0., flag)
-
-dz = np.zeros((IE, JE), dtype=data_type1)
-iz = np.zeros((IE, JE), dtype=data_type1)
-ez = np.zeros((IE, JE), dtype=data_type1)
-hx = np.zeros((IE, JE), dtype=data_type1)
-hy = np.zeros((IE, JE), dtype=data_type1)
-ihx = np.zeros((IE, JE), dtype=data_type1)
-ihy = np.zeros((IE, JE), dtype=data_type1)
-ga = np.ones((IE, JE), dtype=data_type1) * medium_eps  # main medium epsilon
-gb = np.zeros((IE, JE), dtype=data_type1) * medium_sigma  # main medium sigma
-Pz = np.zeros((IE, JE), dtype=data_type1)
-
-gi2 = np.ones(IE, dtype=data_type1)
-gi3 = np.ones(IE, dtype=data_type1)
-fi1 = np.zeros(IE, dtype=data_type1)
-fi2 = np.ones(IE, dtype=data_type1)
-fi3 = np.ones(IE, dtype=data_type1)
-
-gj2 = np.ones(JE, dtype=data_type1)
-gj3 = np.ones(JE, dtype=data_type1)
-fj1 = np.zeros(JE, dtype=data_type1)
-fj2 = np.ones(JE, dtype=data_type1)
-fj3 = np.ones(JE, dtype=data_type1)
-
-ez_inc = np.zeros(JE, dtype=data_type1)
-hx_inc = np.zeros(JE, dtype=data_type1)
-
-x_offset = 0
-y_offset = 0
-
-fig = plt.figure(figsize=(5, 5))
-grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
-ay = fig.add_subplot(grid[:, :])
-# Cyclic Number of image snapping
-frame_interval = 8
-ims = []
-
-wstart = 10
-fwidth = 5 + wstart
-a = 2
-b = 2
-i = 0
-j = 0
-
-gi2, gi3, fi1, fi2, fi3, gj2, gj3, fj1, fj2, fj3 = PML(npml, IE, JE, gi2, gi3, fi1, fi2, fi3, gj2, gj3, fj1, fj2, fj3)
-x_points, y_points, shape1, shape2, data = shapes(IE, JE, x_points, y_points)
-ga, gb, x_points, y_points, data, shape1, shape2 = medium(ga, gb, x_points, y_points, data, shape1, shape2)
-
-for n in range(1, nsteps):
-    net = time.time()
-    T = T + 1
-    # MAIND FDTD LOOP
-    # ez_incd, hx_incd = cuda.to_device(ez_inc, stream=stream), cuda.to_device(hx_inc, stream=stream)
-    ez_inc = Ez_inc_CU(ez_inc, hx_inc)
-    # ez_inc, hx_inc = ez_incd.copy_to_host(stream=stream), hx_incd.copy_to_host(stream=stream)
-    ez_inc[0] = ez_inc_low_m2
-    ez_inc_low_m2 = ez_inc_low_m1
-    ez_inc_low_m1 = ez_inc[1]
-    ez_inc[JE - 1] = ez_inc_high_m2
-    ez_inc_high_m2 = ez_inc_high_m1
-    ez_inc_high_m1 = ez_inc[JE - 2]
-    dz = Dz_CU(dz, hx, hy, gi2, gi3, gj2, gj3)
-    if T < 200:
-        pulse = data_type(M.sin(2 * M.pi * freq * dt * T), flag)
-        # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
-        # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
-        dz[round(IE / 2)][3] = pulse  # plane wave
-    else:
-        pass
-    dz = Dz_inc_val_CU(dz, hx_inc)
-    ez, iz = Ez_Dz_CU(ez, ga, gb, dz, iz)
-    hx_inc = Hx_inc_CU(hx_inc, ez_inc)
-    ihx, hx = Hx_CU(ez, hx, ihx, fj3, fj2, fi1)
-    hx = Hx_inc_val_CU(hx, ez_inc)
-    ihy, hy = Hy_CU(hy, ez, ihy, fi3, fi2, fi1)
-    hy = Hy_inc_CU(hy, ez_inc)
-    Pz = Power_Calc(Pz, ez, hy, hx)
-    netend = time.time()
-    # print("Time netto : " + str((netend - net)) + "[s]")
-    nett_time_sum += netend - net
-    # Drawing of the EM and FT plots
-    if T % frame_interval == 0:
-        x = np.linspace(0, JE, JE)
-        y = np.linspace(0, IE, IE)
-        values = range(len(x))
-        X, Y = np.meshgrid(x, y)
-        Z = Pz[:][:]  # Power - W/m^2s
-        INTEGRATE.append(Z)
-        YY = np.trapz(INTEGRATE, axis=0) / window
-        if len(INTEGRATE) >= window:
-            del INTEGRATE[0]
-        title = ay.annotate("Time :" + '{:<.4e}'.format(T * dt * 1 * 10 ** 15) + " fs", (1, 0.5),
-                            xycoords=ay.get_window_extent, xytext=(-round(JE * 2), IE - 5),
-                            textcoords="offset points", fontsize=9, color='white')
-        ims2 = ay.imshow(Z, cmap=cm.tab20c, extent=[0, JE, 0, IE])
-        ims2.set_interpolation('bilinear')
-        ims4 = ay.scatter(x_points, y_points, c='grey', s=70, alpha=0.01)
-        ims.append([ims2, ims4, title])
-        # print("Punkt : " + str(T))
-
-ay.set_xlabel("x [um]")
-ay.set_ylabel("y [um]")
-labels = [item.get_text() for item in ay.get_xticklabels()]
-labels[0] = '0'
-labels[1] = str(0.2 * IE / dx)
-labels[2] = str(0.4 * IE / dx)
-labels[3] = str(0.5 * IE / dx)
-labels[4] = str(0.8 * IE / dx)
-labels[5] = str(IE / dx)
-ay.set_xticklabels(labels)
-labels[1] = str(0.2 * JE / dx)
-labels[2] = str(0.4 * JE / dx)
-labels[3] = str(0.5 * JE / dx)
-labels[4] = str(0.8 * JE / dx)
-labels[5] = str(JE / dx)
-ay.set_yticklabels(labels)
-
-e = time.time()
-print("Time brutto : " + str((e - s)) + "[s]")
-print("Time netto SUM : " + str(nett_time_sum) + "[s]")
-file_name = "2d_fdtd_Si_Cylinder_2"
-# file_name = "./" + file_name + '.gif'
-file_name = "./" + file_name + '.gif'
-ani = animation.ArtistAnimation(fig, ims, interval=30, blit=True)
-# ani.save(file_name, writer='pillow', fps=30, dpi=100)
-# ani.save(file_name + '.mp4', fps = 30, extra_args = ['-vcodec', 'libx264'])
-# ani.save(file_name, writer="imagemagick", fps=30)
-print("OK")
-plt.show()
