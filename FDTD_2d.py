@@ -9,62 +9,63 @@ import cupy as cp
 import cairo
 
 
-class FDTD_2D:
-    def __init__(self):
+class FDTD:
+    def __init__(self, plot_flag=1, show_structure=1, pulse_len=200, freq=454.231E12, nsteps=3000):
         # mpl.use('Agg')
-        self.LetsPlot = 1
+        self.LetsPlot = plot_flag
+        self.show_cario = show_structure
+        self.pulse_length = pulse_len
         jit(device=True)
         jit(warn=False)
         np.seterr(divide='ignore', invalid='ignore')
         self.s = time.time()
         self.nett_time_sum = 0
-        self.frame_interval = 16
+        self.frame_interval = 32
         self.ims = []
         self.flag = 1
         self.data_type1 = np.float32
         self.cc = C()
-        self.IE = self.JE = 500  # GRID
+        self.IE = self.JE = 1000  # GRID
         self.npml = 8
-        self.freq = FDTD_2D.data_type(self, 454.231E12)  # red light (666nm)
+        self.freq = FDTD.data_type(self, freq)  # red light (666nm)
         self.n_index = self.cc.nSiO2
         self.n_sigma = self.cc.sigmaSiO2
-        self.epsilon = FDTD_2D.data_type(self, self.n_index)
-        self.sigma = FDTD_2D.data_type(self, self.n_sigma)
-        self.epsilon_medium = FDTD_2D.data_type(self, 1.003)
-        self.sigma_medium = FDTD_2D.data_type(self, 0.)
+        self.epsilon = FDTD.data_type(self, self.n_index)
+        self.sigma = FDTD.data_type(self, self.n_sigma)
+        self.epsilon_medium = FDTD.data_type(self, 1.003)
+        self.sigma_medium = FDTD.data_type(self, 0.)
         self.wavelength = self.cc.c0 / (self.n_index * self.freq)
         self.vm = self.wavelength * self.freq
         self.dx = 10
-        self.ddx = FDTD_2D.data_type(self, self.wavelength / self.dx)  # Cells Size
+        self.ddx = FDTD.data_type(self, self.wavelength / self.dx)  # Cells Size
         # dt = data_type((ddx / cc.c0) *  M.sqrt(2),flag) # Time step
         #   CFL stability condition- Lax Equivalence Theorem
         self.dt = 1 / (self.vm * M.sqrt(1 / (self.ddx ** 2) + 1 / (self.ddx ** 2)))  # Tiem step\
-        self.z_max = FDTD_2D.data_type(self, 0)
-        self.epsz = FDTD_2D.data_type(self, 8.854E-12)
-        self.spread = FDTD_2D.data_type(self, 8)
-        self.t0 = FDTD_2D.data_type(self, 1)
+        self.z_max = FDTD.data_type(self, 0)
+        self.epsz = FDTD.data_type(self, 8.854E-12)
+        self.spread = FDTD.data_type(self, 8)
+        self.t0 = FDTD.data_type(self, 1)
         self.ic = self.IE / 2
         self.jc = self.JE / 2
         self.ia = 7  # total scattered field boundaries
         self.ib = self.IE - self.ia - 1
         self.ja = 7
         self.jb = self.JE - self.ja - 1
-        self.nsteps = 1500
+        self.nsteps = nsteps
         self.T = 0
         self.medium_eps = 1. / (self.epsilon_medium + self.sigma_medium * self.dt / self.epsz)
         self.medium_sigma = self.sigma_medium * self.dt / self.epsz
-        self.INTEGRATE = []
         self.x_points = []
         self.y_points = []
         self.window = 10
         self.k_vec = 2 * M.pi / self.wavelength
         self.omega = 2 * M.pi * self.freq
 
-        self.ez_inc_low_m2 = FDTD_2D.data_type(self, 0.)
-        self.ez_inc_low_m1 = FDTD_2D.data_type(self, 0.)
+        self.ez_inc_low_m2 = FDTD.data_type(self, 0.)
+        self.ez_inc_low_m1 = FDTD.data_type(self, 0.)
 
-        self.ez_inc_high_m2 = FDTD_2D.data_type(self, 0.)
-        self.ez_inc_high_m1 = FDTD_2D.data_type(self, 0.)
+        self.ez_inc_high_m2 = FDTD.data_type(self, 0.)
+        self.ez_inc_high_m1 = FDTD.data_type(self, 0.)
 
         self.dz = np.zeros((self.IE, self.JE), dtype=self.data_type1)
         self.iz = np.zeros((self.IE, self.JE), dtype=self.data_type1)
@@ -248,17 +249,17 @@ class FDTD_2D:
         cr.set_source_rgb(1.0, 1.0, 1.0)
         cr.paint()
         for i in range(0, int(np.random.randint(1, 2, 1))):
-            x1 = np.random.randint(0, self.IE, 1)
-            x2 = np.random.randint(0, self.IE, 1)
-            y1 = np.random.randint(0, self.JE, 1)
-            y2 = np.random.randint(0, self.JE, 1)
+            x1 = np.random.uniform(0, self.IE)
+            x2 = np.random.uniform(0, self.IE)
+            y1 = np.random.uniform(0, self.JE)
+            y2 = np.random.uniform(0, self.JE)
             cr.rectangle(x1, x2, y1, y2)
         for i in range(0, int(np.random.randint(1, 2, 1))):
-            x1 = np.random.randint(0, self.IE, 1)
-            x2 = np.random.randint(0, self.IE, 1)
-            y1 = np.random.randint(0, self.JE, 1)
-            y2 = np.random.randint(0, self.JE, 1)
-            cr.arc(x1, x2, y1, y2, 2 * M.pi)
+            x1 = np.random.uniform(0, self.IE)
+            x2 = np.random.uniform(0, self.IE)
+            y1 = np.random.uniform(0, self.JE)
+            y2 = np.random.uniform(0, self.JE)
+            cr.arc(x1 + 0.5, x2, y1, y2, 2 * M.pi)
             cr.set_line_width(5)
             cr.close_path()
 
@@ -272,8 +273,8 @@ class FDTD_2D:
             for i in range(0, self.shape1):
                 if self.data[i, j, 0] <= 0:
                     # print(data[i, j, 0])
-                    self.ga[j, i] = FDTD_2D.data_type(self, 1 / (self.epsilon + (self.sigma * self.dt / self.epsz)))
-                    self.gb[j, i] = FDTD_2D.data_type(self, self.sigma * self.dt / self.epsz)
+                    self.ga[j, i] = FDTD.data_type(self, 1 / (self.epsilon + (self.sigma * self.dt / self.epsz)))
+                    self.gb[j, i] = FDTD.data_type(self, self.sigma * self.dt / self.epsz)
                     self.x_points.append(i)
                     self.y_points.append(self.JE - j)
                 if self.data[i, j, 0] > 0:
@@ -287,7 +288,7 @@ class FDTD_2D:
             self.T = self.T + 1
             # MAIND FDTD LOOP
             # ez_incd, hx_incd = cuda.to_device(ez_inc, stream=stream), cuda.to_device(hx_inc, stream=stream)
-            self.ez_inc = FDTD_2D.Ez_inc_CU(self.JE, self.ez_inc, self.hx_inc)
+            self.ez_inc = FDTD.Ez_inc_CU(self.JE, self.ez_inc, self.hx_inc)
             # ez_inc, hx_inc = ez_incd.copy_to_host(stream=stream), hx_incd.copy_to_host(stream=stream)
             self.ez_inc[0] = self.ez_inc_low_m2
             self.ez_inc_low_m2 = self.ez_inc_low_m1
@@ -295,23 +296,23 @@ class FDTD_2D:
             self.ez_inc[self.JE - 1] = self.ez_inc_high_m2
             self.ez_inc_high_m2 = self.ez_inc_high_m1
             self.ez_inc_high_m1 = self.ez_inc[self.JE - 2]
-            self.dz = FDTD_2D.Dz_CU(self.IE, self.JE, self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
-            if self.T < 300:
-                self.pulse = FDTD_2D.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
+            self.dz = FDTD.Dz_CU(self.IE, self.JE, self.dz, self.hx, self.hy, self.gi2, self.gi3, self.gj2, self.gj3)
+            if self.T < self.pulse_length:
+                self.pulse = FDTD.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
                 # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
                 # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
                 self.dz[round(self.IE / 2)][3] = self.pulse  # plane wave
             else:
                 pass
-            self.dz = FDTD_2D.Dz_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.dz, self.hx_inc)
-            self.ez, self.iz = FDTD_2D.Ez_Dz_CU(self.IE, self.JE, self.ez, self.ga, self.gb, self.dz, self.iz)
-            self.hx_inc = FDTD_2D.Hx_inc_CU(self.JE, self.hx_inc, self.ez_inc)
-            self.ihx, self.hx = FDTD_2D.Hx_CU(self.IE, self.JE, self.ez, self.hx, self.ihx, self.fj3, self.fj2,
-                                              self.fi1)
-            self.hx = FDTD_2D.Hx_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.hx, self.ez_inc)
-            self.ihy, hy = FDTD_2D.Hy_CU(self.IE, self.JE, self.hy, self.ez, self.ihy, self.fi3, self.fi2, self.fi1)
-            self.hy = FDTD_2D.Hy_inc_CU(self.ia, self.ib, self.ja, self.jb, self.hy, self.ez_inc)
-            self.Pz = FDTD_2D.Power_Calc(self.IE, self.JE, self.Pz, self.ez, self.hy, self.hx)
+            self.dz = FDTD.Dz_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.dz, self.hx_inc)
+            self.ez, self.iz = FDTD.Ez_Dz_CU(self.IE, self.JE, self.ez, self.ga, self.gb, self.dz, self.iz)
+            self.hx_inc = FDTD.Hx_inc_CU(self.JE, self.hx_inc, self.ez_inc)
+            self.ihx, self.hx = FDTD.Hx_CU(self.IE, self.JE, self.ez, self.hx, self.ihx, self.fj3, self.fj2,
+                                           self.fi1)
+            self.hx = FDTD.Hx_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.hx, self.ez_inc)
+            self.ihy, hy = FDTD.Hy_CU(self.IE, self.JE, self.hy, self.ez, self.ihy, self.fi3, self.fi2, self.fi1)
+            self.hy = FDTD.Hy_inc_CU(self.ia, self.ib, self.ja, self.jb, self.hy, self.ez_inc)
+            self.Pz = FDTD.Power_Calc(self.IE, self.JE, self.Pz, self.ez, self.hy, self.hx)
             self.netend = time.time()
             # print("Time netto : " + str((netend - net)) + "[s]")
             self.nett_time_sum += self.netend - self.net
@@ -330,9 +331,13 @@ class FDTD_2D:
                                              textcoords="offset points", fontsize=9, color='white')
                     ims2 = self.ay.imshow(self.Z, cmap=cm.twilight, extent=[0, self.JE, 0, self.IE])
                     ims2.set_interpolation('bilinear')
-                    ims4 = self.ay.scatter(self.x_points, self.y_points, c='blue', s=70, alpha=0.01)
-                    self.ims.append([ims2, ims4, title])
-                    # print("Punkt : " + str(T))
+                    if self.show_cario == 1:
+                        ims4 = self.ay.scatter(self.x_points, self.y_points, c='blue', s=70, alpha=0.01)
+                        self.ims.append([ims2, ims4, title])
+                        # print("Punkt : " + str(T))
+                    else:
+                        self.ims.append([ims2, title])
+                        # print("Punkt : " + str(T))
                 else:
                     pass
 
@@ -370,11 +375,3 @@ class FDTD_2D:
         else:
             pass
     # ------------------------------- FUNCTIONS --------------------------
-
-
-SIM = FDTD_2D()
-SIM.PML()
-SIM.ShapeGen()
-SIM.medium()
-SIM.CORE()
-SIM.plot_sim()
