@@ -1,5 +1,7 @@
 import math as M
 import time
+
+from matplotlib.ticker import FormatStrFormatter
 from numba import cuda, vectorize, guvectorize, jit, njit
 import numpy as np
 from matplotlib import pyplot as plt, animation, offsetbox
@@ -7,10 +9,12 @@ import matplotlib.cm as cm
 from C import C
 import cupy as cp
 import cairo
-
+import matplotlib.ticker as tick
+cc = C()
 
 class FDTD:
-    def __init__(self, plot_flag=1, show_structure=1, pulse_len=200, freq=454.231E12, nsteps=3000):
+    def __init__(self, particle_scale=1, num_of_structures=1, grid_size=1000, plot_flag=1, show_structure=1,
+                 pulse_len=200, freq=454.231E12, nsteps=3000, pulse_loc_x=3, pulse_loc_y=3,n_index=cc.nSiO2,sigma=cc.sigmaSiO2):
         # mpl.use('Agg')
         self.LetsPlot = plot_flag
         self.show_cario = show_structure
@@ -20,27 +24,31 @@ class FDTD:
         np.seterr(divide='ignore', invalid='ignore')
         self.s = time.time()
         self.nett_time_sum = 0
-        self.frame_interval = 32
+        self.frame_interval = 16
+        self.particle_scale = particle_scale
+        self.num_of_structures = num_of_structures
         self.ims = []
         self.flag = 1
         self.data_type1 = np.float32
         self.cc = C()
-        self.IE = self.JE = 1000  # GRID
+        self.IE = self.JE = grid_size  # GRID
         self.npml = 8
         self.freq = FDTD.data_type(self, freq)  # red light (666nm)
-        self.n_index = self.cc.nSiO2
-        self.n_sigma = self.cc.sigmaSiO2
+        self.n_index = n_index
+        self.n_sigma = sigma
         self.epsilon = FDTD.data_type(self, self.n_index)
         self.sigma = FDTD.data_type(self, self.n_sigma)
         self.epsilon_medium = FDTD.data_type(self, 1.003)
         self.sigma_medium = FDTD.data_type(self, 0.)
         self.wavelength = self.cc.c0 / (self.n_index * self.freq)
         self.vm = self.wavelength * self.freq
-        self.dx = 10
+        self.dx = 20
         self.ddx = FDTD.data_type(self, self.wavelength / self.dx)  # Cells Size
+        self.pulse_loc_x = pulse_loc_x
+        self.pulse_loc_y = pulse_loc_y
         # dt = data_type((ddx / cc.c0) *  M.sqrt(2),flag) # Time step
         #   CFL stability condition- Lax Equivalence Theorem
-        self.dt = 1 / (self.vm * M.sqrt(1 / (self.ddx ** 2) + 1 / (self.ddx ** 2)))  # Tiem step\
+        self.dt = 1 / (self.vm * M.sqrt(1 / (self.ddx ** 2) + 1 / (self.ddx ** 2)))  # Tiem step # dt <= dx/sqrt(2)*cmax
         self.z_max = FDTD.data_type(self, 0)
         self.epsz = FDTD.data_type(self, 8.854E-12)
         self.spread = FDTD.data_type(self, 8)
@@ -52,7 +60,7 @@ class FDTD:
         self.ja = 7
         self.jb = self.JE - self.ja - 1
         self.nsteps = nsteps
-        self.T = 0
+        self.T = -1
         self.medium_eps = 1. / (self.epsilon_medium + self.sigma_medium * self.dt / self.epsz)
         self.medium_sigma = self.sigma_medium * self.dt / self.epsz
         self.x_points = []
@@ -99,15 +107,19 @@ class FDTD:
         self.data = np.zeros((self.IE, self.JE, 4), dtype=np.uint8)
         self.shape1 = self.data[:, :, 0].shape[0]
         self.shape2 = self.data[:, :, 0].shape[1]
-        self.fig = plt.figure(figsize=(5, 5))
-        self.grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
-        self.ay = self.fig.add_subplot(self.grid[:, :])
+        if self.LetsPlot == 1:
+            self.fig = plt.figure(figsize=(5, 5))
+            self.grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
+            self.ay = self.fig.add_subplot(self.grid[:, :])
+        else:
+            pass
         # Cyclic Number of image snapping
         x = np.linspace(0, self.JE, self.JE)
         y = np.linspace(0, self.IE, self.IE)
         # values = range(len(x))
         self.X, self.Y = np.meshgrid(x, y)
         self.Z = None
+        self.FieldProp = self.Pz
 
     # -------------------------------- KERNELS ---------------------------
     @staticmethod
@@ -245,23 +257,64 @@ class FDTD:
         surface = cairo.ImageSurface.create_for_data(
             self.data, cairo.FORMAT_ARGB32, self.IE, self.JE)
         cr = cairo.Context(surface)
-
         cr.set_source_rgb(1.0, 1.0, 1.0)
         cr.paint()
-        for i in range(0, int(np.random.randint(1, 2, 1))):
-            x1 = np.random.uniform(0, self.IE)
-            x2 = np.random.uniform(0, self.IE)
-            y1 = np.random.uniform(0, self.JE)
-            y2 = np.random.uniform(0, self.JE)
-            cr.rectangle(x1, x2, y1, y2)
-        for i in range(0, int(np.random.randint(1, 2, 1))):
-            x1 = np.random.uniform(0, self.IE)
-            x2 = np.random.uniform(0, self.IE)
-            y1 = np.random.uniform(0, self.JE)
-            y2 = np.random.uniform(0, self.JE)
-            cr.arc(x1 + 0.5, x2, y1, y2, 2 * M.pi)
-            cr.set_line_width(5)
-            cr.close_path()
+        scale = 0
+        for i in range(1, self.IE):
+            if self.ddx * i >= self.wavelength:
+                scale = i
+                break
+            else:
+                pass
+        if self.particle_scale == 0:
+            for i in range(0, self.num_of_structures):
+                x1 = np.random.uniform(0, self.IE)
+                x2 = np.random.uniform(0, scale)
+                y1 = np.random.uniform(0, self.JE)
+                y2 = np.random.uniform(0, scale)
+                cr.rectangle(x1, y1, x2, y2)
+            for i in range(0, self.num_of_structures):
+                x1 = np.random.uniform(0, self.IE)
+                x2 = np.random.uniform(0, scale)
+                y1 = np.random.uniform(0, self.JE)
+                y2 = np.random.uniform(0, 2 * M.pi)
+                y3 = np.random.uniform(0, 2 * M.pi)
+                cr.arc(x1, y1, x2, y2, y3)
+                cr.set_line_width(1)
+                cr.close_path()
+
+        elif self.particle_scale == 1:
+            for i in range(0, self.num_of_structures):
+                x1 = np.random.uniform(0, self.IE)
+                x2 = np.random.uniform(0, scale / 10)
+                y1 = np.random.uniform(0, self.JE)
+                y2 = np.random.uniform(0, scale / 10)
+                cr.rectangle(x1, y1, x2, y2)
+            for i in range(0, self.num_of_structures):
+                x1 = np.random.uniform(0, self.IE)
+                x2 = np.random.uniform(0, scale / 10)
+                y1 = np.random.uniform(0, self.JE)
+                y2 = np.random.uniform(0, 2 * M.pi)
+                y3 = np.random.uniform(0, 2 * M.pi)
+                cr.arc(x1, y1, x2, y2, y3)
+                cr.set_line_width(1)
+                cr.close_path()
+            else:
+                for i in range(0, self.num_of_structures):
+                    x1 = np.random.uniform(0, self.IE)
+                    x2 = np.random.uniform(0, scale * 10)
+                    y1 = np.random.uniform(0, self.JE)
+                    y2 = np.random.uniform(0, scale * 10)
+                    cr.rectangle(x1, y1, x2, y2)
+                for i in range(0, self.num_of_structures):
+                    x1 = np.random.uniform(0, self.IE)
+                    x2 = np.random.uniform(0, scale * 10)
+                    y1 = np.random.uniform(0, self.JE)
+                    y2 = np.random.uniform(0, 2 * M.pi)
+                    y3 = np.random.uniform(0, 2 * M.pi)
+                    cr.arc(x1, y1, x2, y2, y3)
+                    cr.set_line_width(1)
+                    cr.close_path()
 
         cr.set_source_rgb(1.0, 0.0, 0.0)
         cr.fill()
@@ -301,7 +354,7 @@ class FDTD:
                 self.pulse = FDTD.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
                 # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
                 # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
-                self.dz[round(self.IE / 2)][3] = self.pulse  # plane wave
+                self.dz[self.pulse_loc_x][self.pulse_loc_y] = self.pulse  # plane wave
             else:
                 pass
             self.dz = FDTD.Dz_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.dz, self.hx_inc)
@@ -316,10 +369,13 @@ class FDTD:
             self.netend = time.time()
             # print("Time netto : " + str((netend - net)) + "[s]")
             self.nett_time_sum += self.netend - self.net
-            # Drawing of the EM and FT plots
+
+            self.FieldProp = np.concatenate((self.FieldProp, self.Pz), axis=1)
+            # print(self.FieldProp)
             if self.LetsPlot == 1:
                 if self.T % self.frame_interval == 0:
                     self.Z = self.Pz[:][:]  # Power - W/m^2s
+
                     # self.INTEGRATE.append(self.Z)
                     # self.YY = np.trapz(self.INTEGRATE, axis=0) / self.window
                     # if len(self.INTEGRATE) >= self.window:
@@ -329,10 +385,12 @@ class FDTD:
                                              xycoords=self.ay.get_window_extent,
                                              xytext=(-round(self.JE * 2), self.IE - 5),
                                              textcoords="offset points", fontsize=9, color='white')
-                    ims2 = self.ay.imshow(self.Z, cmap=cm.twilight, extent=[0, self.JE, 0, self.IE])
+                    ims2 = self.ay.imshow(self.Z, cmap=cm.PuOr, extent=[0, self.JE * self.ddx, 0, self.IE * self.ddx])
                     ims2.set_interpolation('bilinear')
                     if self.show_cario == 1:
-                        ims4 = self.ay.scatter(self.x_points, self.y_points, c='blue', s=70, alpha=0.01)
+                        x_points_scaled = [element * self.ddx for element in self.x_points]
+                        y_points_scaled = [element * self.ddx for element in self.y_points]
+                        ims4 = self.ay.scatter(x_points_scaled, y_points_scaled, c='grey', s=70, alpha=0.015)
                         self.ims.append([ims2, ims4, title])
                         # print("Punkt : " + str(T))
                     else:
@@ -343,23 +401,8 @@ class FDTD:
 
     def plot_sim(self):
         if self.LetsPlot == 1:
-            self.ay.set_xlabel("x [um]")
-            self.ay.set_ylabel("y [um]")
-            labels = [item.get_text() for item in self.ay.get_xticklabels()]
-            labels[0] = '0'
-            labels[1] = str(0.2 * self.IE / self.dx)
-            labels[2] = str(0.4 * self.IE / self.dx)
-            labels[3] = str(0.5 * self.IE / self.dx)
-            labels[4] = str(0.8 * self.IE / self.dx)
-            labels[5] = str(self.IE / self.dx)
-            self.ay.set_xticklabels(labels)
-            labels[1] = str(0.2 * self.JE / self.dx)
-            labels[2] = str(0.4 * self.JE / self.dx)
-            labels[3] = str(0.5 * self.JE / self.dx)
-            labels[4] = str(0.8 * self.JE / self.dx)
-            labels[5] = str(self.JE / self.dx)
-            self.ay.set_yticklabels(labels)
-
+            self.ay.set_xlabel("x [m]")
+            self.ay.set_ylabel("y [m]")
             e = time.time()
             print("Time brutto : " + str((e - self.s)) + "[s]")
             print("Time netto SUM : " + str(self.nett_time_sum) + "[s]")
