@@ -11,12 +11,12 @@ import time
 cc = C()
 plot_flag = 1
 show_structure = 1
-particle_scale = 2  # 0 = lambda, 1 = lambda/10, else = lambda*10
-num_of_structures = 1
+particle_scale = 1  # 0 = lambda, 1 = lambda/10, else = lambda*10
+num_of_structures = 100
 grid_size = 250
 pulse_len = 100
 freq = 454.231E12
-nsteps = 10
+nsteps = 500
 pulse_loc_x = round(grid_size / 2)
 pulse_loc_y = round(grid_size / 2)  # 3
 n_index = cc.nSiO2
@@ -80,7 +80,7 @@ Gen_Structure = np.zeros((grid_size, grid_size), dtype=np.float32)
 for i in range(0, len(Generated_Structure[0])):
     x_pair = Generated_Structure[0][i]
     y_pair = Generated_Structure[1][i]
-    if x_pair or y_pair <grid_size:
+    if x_pair or y_pair <grid_size-1:
         Gen_Structure[int(x_pair)][int(y_pair)] = 1.
     else:
         pass

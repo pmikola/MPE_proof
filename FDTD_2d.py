@@ -45,7 +45,7 @@ class FDTD:
         self.sigma_medium = FDTD.data_type(self, 0.)
         self.wavelength = self.cc.c0 / (self.n_index * self.freq)
         self.vm = self.wavelength * self.freq
-        self.dx = 10
+        self.dx = 10 # issue
         self.ddx = FDTD.data_type(self, self.wavelength / self.dx)  # Cells Size
         self.pulse_loc_x = pulse_loc_x
         self.pulse_loc_y = pulse_loc_y
