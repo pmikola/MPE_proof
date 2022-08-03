@@ -333,9 +333,8 @@ class FDTD:
                     self.gb[j, i] = FDTD.data_type(self, self.sigma * self.dt / self.epsz)
                     self.x_points.append(i)
                     self.y_points.append(self.JE - j)
-                if self.data[i, j, 0] > 0:
+                else:
                     pass
-                    # print(data[i, j, 0])
         return self.ga, self.gb, self.x_points, self.y_points, self.data, self.shape1, self.shape2
 
     def CORE(self):

@@ -5,6 +5,8 @@ from matplotlib import pyplot as plt
 import sys
 import matplotlib.cm as cm
 from numba import cuda, vectorize, guvectorize, jit, njit
+import time
+
 # ------------------------------- INIT --------------------------
 cc = C()
 plot_flag = 1
@@ -14,13 +16,14 @@ num_of_structures = 1
 grid_size = 250
 pulse_len = 100
 freq = 454.231E12
-nsteps = 100
+nsteps = 10
 pulse_loc_x = round(grid_size / 2)
 pulse_loc_y = round(grid_size / 2)  # 3
 n_index = cc.nSiO2
 sigma = cc.sigmaSiO2
 # ------------------------------- INIT --------------------------
-
+#np.random.seed(2022)
+# np.random.seed(828)
 SIM = FDTD_2d.FDTD(particle_scale, num_of_structures, grid_size, plot_flag, show_structure, pulse_len, freq, nsteps,
                    pulse_loc_x, pulse_loc_y, n_index, sigma)
 SIM.PML()
@@ -28,7 +31,6 @@ SIM.ShapeGen()
 SIM.medium()
 SIM.CORE()
 SIM.plot_sim()
-
 
 # ------------------------------- FUNCTIONS --------------------------
 
@@ -45,6 +47,7 @@ SIM.plot_sim()
 
 # ------------------------------- DATA --------------------------
 # INPUT DATA FOR GAN NETWORK
+
 np.set_printoptions(threshold=sys.maxsize)
 x = np.array(SIM.x_points)
 y = np.array(SIM.y_points)
@@ -55,31 +58,40 @@ x_fig = range(0, grid_size)
 y_fig = range(0, grid_size)
 ay.plot(x_fig, y_fig, alpha=0)
 # ay.scatter(x, y, c='grey', s=70, alpha=0.017)
-Generated_Structure = np.zeros((2,1),dtype=np.float32)
-pairs = np.zeros((2,1),dtype=np.float32)
-#print(Generated_Structure)
-for i in range(0,len(x)):
+Generated_Structure = np.zeros((2, 1), dtype=np.float32)
+pairs = np.zeros((2, 1), dtype=np.float32)
+# print(Generated_Structure)
+for i in range(0, len(x)):
     pairs[0] = x[i]
     pairs[1] = y[i]
-    #print(pairs)
-    Generated_Structure = np.append(Generated_Structure, pairs,axis=1)
+    # print(pairs)
+    Generated_Structure = np.append(Generated_Structure, pairs, axis=1)
 #     #for j in range(0, len(y)):
 #     #np.append(Generated_Structure,)
-    #print(Generated_Structure)
+# print(Generated_Structure)
 #
-Generated_Structure = np.unique(Generated_Structure,axis=0)
-Generated_Structure = np.delete(Generated_Structure,0,axis=1)
-Gen_Structure = np.zeros((grid_size,grid_size),dtype=np.float32)
-#print(Generated_Structure[0][:])
-for i in range(0,len(Generated_Structure[0])-1):
+Generated_Structure = np.unique(Generated_Structure, axis=1)
+Generated_Structure = np.delete(Generated_Structure, 0, axis=1)
+Gen_Structure = np.zeros((grid_size, grid_size), dtype=np.float32)
+# print(Generated_Structure[0][:])
+
+# print(Generated_Structure[0].shape)
+# print(Generated_Structure[1].shape)
+for i in range(0, len(Generated_Structure[0])):
     x_pair = Generated_Structure[0][i]
     y_pair = Generated_Structure[1][i]
-    Gen_Structure[int(x_pair)][int(y_pair)] = 1.
+    if x_pair or y_pair <grid_size:
+        Gen_Structure[int(x_pair)][int(y_pair)] = 1.
+    else:
+        pass
+#     # print([int(x_pair), int(y_pair)])
+#     # print(Gen_Structure[int(x_pair)][int(y_pair)])
+#     # print(Gen_Structure[int(x_pair)][:])
+Gen_Structure = np.rot90(Gen_Structure,1,axes=(0, 1))
 
-
-#print(Gen_Structure)
+# print(Gen_Structure)
 # #print(Struct)
-ay.imshow(Gen_Structure,origin='upper')
-#ay.scatter(Generated_Structure[0])
+ay.imshow(Gen_Structure)
+#ay.scatter(Generated_Structure[0], Generated_Structure[1])
 plt.grid()
 plt.show()
