@@ -15,10 +15,12 @@ cc = C()
 
 
 class FDTD:
-    def __init__(self, particle_scale=1, num_of_structures=1, grid_size=1000, plot_flag=1, show_structure=1,
-                 pulse_len=200, freq=454.231E12, nsteps=3000, pulse_loc_x=3, pulse_loc_y=3, n_index=cc.nSiO2,
+    def __init__(self,frame_interval,plot_period, particle_scale=1, num_of_structures=1, grid_size=1000, plot_flag=1, show_structure=1,
+                 pulse_len=200, freq=454.231E12, nsteps=3000, pulse_loc_x=3, pulse_loc_y=3,pulse_width=1,pulse_height=1, n_index=cc.nSiO2,
                  sigma=cc.sigmaSiO2):
         # mpl.use('Agg')
+
+        self.plot_period = plot_period
         self.LetsPlot = plot_flag
         self.show_cario = show_structure
         self.pulse_length = pulse_len
@@ -27,7 +29,7 @@ class FDTD:
         np.seterr(divide='ignore', invalid='ignore')
         self.s = time.time()
         self.nett_time_sum = 0
-        self.frame_interval = 16
+        self.frame_interval = frame_interval
         self.particle_scale = particle_scale
         self.num_of_structures = num_of_structures
         self.ims = []
@@ -45,13 +47,21 @@ class FDTD:
         self.sigma_medium = FDTD.data_type(self, 0.)
         self.wavelength = self.cc.c0 / (self.n_index * self.freq)
         self.vm = self.wavelength * self.freq
-        self.dx = 10 # issue
+        self.dx = 10
         self.ddx = FDTD.data_type(self, self.wavelength / self.dx)  # Cells Size
+        # print(self.ddx)
+        # print(self.wavelength/self.ddx)
+
         self.pulse_loc_x = pulse_loc_x
         self.pulse_loc_y = pulse_loc_y
         # dt = data_type((ddx / cc.c0) *  M.sqrt(2),flag) # Time step
         #   CFL stability condition- Lax Equivalence Theorem
         self.dt = 1 / (self.vm * M.sqrt(1 / (self.ddx ** 2) + 1 / (self.ddx ** 2)))  # Tiem step # dt <= dx/sqrt(2)*cmax
+        # self.dt = (self.ddx/cc.c0*M.sqrt(2))/2
+        self.pulse_width = pulse_width
+        self.pulse_height = pulse_height
+        # print(self.dt)
+        # time.sleep(2)
         self.z_max = FDTD.data_type(self, 0)
         self.epsz = FDTD.data_type(self, 8.854E-12)
         self.spread = FDTD.data_type(self, 8)
@@ -112,6 +122,8 @@ class FDTD:
         self.shape2 = self.data[:, :, 0].shape[1]
         if self.LetsPlot == 1:
             self.fig = plt.figure(figsize=(5, 5))
+            self.timer = self.fig.canvas.new_timer(interval=self.plot_period)
+            self.timer.add_callback(plt.close)
             self.grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
             self.ay = self.fig.add_subplot(self.grid[:, :])
         else:
@@ -356,7 +368,7 @@ class FDTD:
                 self.pulse = FDTD.data_type(self, M.sin(2 * M.pi * self.freq * self.dt * self.T))
                 # pulse = data_type(M.exp(-.5 * (pow((t0 - T * 4) / spread, 2))), flag)
                 # pulse = data_type(M.exp(-(T-t0)**2/(2*(t0/10)**2)) * M.sin(2*M.pi * (cc.c0/wavelength)*T),flag)
-                self.dz[self.pulse_loc_x][self.pulse_loc_y] = self.pulse  # plane wave
+                self.dz[self.pulse_loc_x][self.pulse_loc_y] = self.pulse
             else:
                 pass
             self.dz = FDTD.Dz_inc_val_CU(self.ia, self.ib, self.ja, self.jb, self.dz, self.hx_inc)
@@ -393,21 +405,17 @@ class FDTD:
                     # self.YY = np.trapz(self.INTEGRATE, axis=0) / self.window
                     # if len(self.INTEGRATE) >= self.window:
                     #     del self.INTEGRATE[0]
-                    title = self.ay.annotate("Time :" + '{:<.4e}'.format(self.T * self.dt * 1 * 10 ** 15) + " fs",
-                                             (1, 0.5),
-                                             xycoords=self.ay.get_window_extent,
-                                             xytext=(-round(self.JE * 2), self.IE - 5),
-                                             textcoords="offset points", fontsize=9, color='white')
-                    ims2 = self.ay.imshow(self.Z, cmap=cm.PuOr, extent=[0, self.JE * self.ddx, 0, self.IE * self.ddx])
+                    ims2 = self.ay.imshow(self.Z, cmap=cm.hot,  # interpolation='nearest',
+                                          extent=[0, self.JE * self.ddx, 0, self.IE * self.ddx])
                     ims2.set_interpolation('bilinear')
                     if self.show_cario == 1:
                         x_points_scaled = [element * self.ddx for element in self.x_points]
                         y_points_scaled = [element * self.ddx for element in self.y_points]
-                        ims4 = self.ay.scatter(x_points_scaled, y_points_scaled, c='grey', s=70, alpha=0.02)
-                        self.ims.append([ims2, ims4, title])
+                        ims4 = self.ay.scatter(x_points_scaled, y_points_scaled, c='grey', s=70, alpha=0.015)
+                        self.ims.append([ims2, ims4])
                         # print("Punkt : " + str(T))
                     else:
-                        self.ims.append([ims2, title])
+                        self.ims.append([ims2])
                         # print("Punkt : " + str(T))
                 else:
                     pass
@@ -427,6 +435,7 @@ class FDTD:
             # ani.save(file_name + '.mp4', fps = 30, extra_args = ['-vcodec', 'libx264'])
             # ani.save(file_name, writer="imagemagick", fps=30)
             print("OK")
+            self.timer.start()
             plt.show()
         else:
             pass

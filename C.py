@@ -11,7 +11,7 @@ class C:
         # self.nSiO2 = 1.4780
         self.nSiO2 = 1.4780
         self.sigmaSiO2 = 1.0E-6
-        self.Wavelength = 4250  # [nm]
+        self.Wavelength = 660  # [nm]
         self.c0 = const.speed_of_light
 
     def gridRes(self, fmax, Nlambda=40):
@@ -40,11 +40,16 @@ class C:
         epsilon_r = n ** 2
         return epsilon_r
 
-    @staticmethod
     def Impedance(er, ur):
         Imp = np.sqrt(ur / er) * np.sqrt(const.mu_0 / const.epsilon_0)
         return Imp
-
-    def WaveVelocity(self, n):
-        v = self.c0 / n
+    @staticmethod
+    def WaveVelocity(n):
+        v = const.speed_of_light / n
         return v
+
+    @staticmethod
+    def WavelengthToFrequency(wavelength, n):
+        v = C.WaveVelocity(n)
+        freq = v / wavelength
+        return freq
