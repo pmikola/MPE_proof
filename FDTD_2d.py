@@ -2,7 +2,7 @@ import math as M
 import time
 
 from matplotlib.ticker import FormatStrFormatter
-from numba import cuda, vectorize, guvectorize, jit, njit
+from numba import cuda, vectorize, guvectorize, jit, njit, prange
 import numpy as np
 from matplotlib import pyplot as plt, animation, offsetbox
 import matplotlib.cm as cm
@@ -140,15 +140,15 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Ez_inc_CU(JE, ez_inc, hx_inc):
-        for j in range(1, JE):
+        for j in prange(1, JE):
             ez_inc[j] = ez_inc[j] + 0.5 * (hx_inc[j - 1] - hx_inc[j])
         return ez_inc
 
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Dz_CU(IE, JE, dz, hx, hy, gi2, gi3, gj2, gj3):
-        for j in range(1, JE):
-            for i in range(1, IE):
+        for j in prange(1, JE):
+            for i in prange(1, IE):
                 dz[i][j] = gi3[i] * gj3[j] * dz[i][j] + \
                            gi2[i] * gj2[j] * 0.5 * \
                            (hy[i][j] - hy[i - 1][j] -
@@ -158,7 +158,7 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Dz_inc_val_CU(ia, ib, ja, jb, dz, hx_inc):
-        for i in range(ia, ib + 1):
+        for i in prange(ia, ib + 1):
             dz[i][ja] = dz[i][ja] + 0.5 * hx_inc[ja - 1]
             dz[i][jb] = dz[i][jb] - 0.5 * hx_inc[jb]
         return dz
@@ -166,8 +166,8 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Ez_Dz_CU(IE, JE, ez, ga, gb, dz, iz):
-        for j in range(0, JE):
-            for i in range(0, IE):
+        for j in prange(0, JE):
+            for i in prange(0, IE):
                 ez[i, j] = ga[i, j] * (dz[i, j] - iz[i, j])
                 iz[i, j] = iz[i, j] + gb[i, j] * ez[i, j]
         return ez, iz
@@ -175,15 +175,15 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Hx_inc_CU(JE, hx_inc, ez_inc):
-        for j in range(0, JE - 1):
+        for j in prange(0, JE - 1):
             hx_inc[j] = hx_inc[j] + .5 * (ez_inc[j] - ez_inc[j + 1])
         return hx_inc
 
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Hx_CU(IE, JE, ez, hx, ihx, fj3, fj2, fi1):
-        for j in range(0, JE - 1):
-            for i in range(0, IE - 1):
+        for j in prange(0, JE - 1):
+            for i in prange(0, IE - 1):
                 curl_e = ez[i][j] - ez[i][j + 1]
                 ihx[i][j] = ihx[i][j] + curl_e
                 hx[i][j] = fj3[j] * hx[i][j] + fj2[j] * \
@@ -193,7 +193,7 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Hx_inc_val_CU(ia, ib, ja, jb, hx, ez_inc):
-        for i in range(ia, ib + 1):
+        for i in prange(ia, ib + 1):
             hx[i][ja - 1] = hx[i][ja - 1] + .5 * ez_inc[ja]
             hx[i][jb] = hx[i][jb] - .5 * ez_inc[jb]
         return hx
@@ -201,8 +201,8 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Hy_CU(IE, JE, hy, ez, ihy, fi3, fi2, fi1):
-        for j in range(0, JE):
-            for i in range(0, IE - 1):
+        for j in prange(0, JE):
+            for i in prange(0, IE - 1):
                 curl_e = ez[i][j] - ez[i + 1][j]
                 ihy[i][j] = ihy[i][j] + curl_e
                 hy[i][j] = fi3[i] * hy[i][j] - fi2[i] * \
@@ -212,7 +212,7 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Hy_inc_CU(ia, ib, ja, jb, hy, ez_inc):
-        for j in range(ja, jb + 1):
+        for j in prange(ja, jb + 1):
             hy[ia - 1][j] = hy[ia - 1][j] - .5 * ez_inc[j]
             hy[ib][j] = hy[ib][j] + .5 * ez_inc[j]
         return hy
@@ -220,8 +220,8 @@ class FDTD:
     @staticmethod
     @jit(nopython=True, parallel=True)
     def Power_Calc(IE, JE, Pz, ez, hy, hx):
-        for j in range(0, JE):
-            for i in range(0, IE):
+        for j in prange(0, JE):
+            for i in prange(0, IE):
                 Pz[i][j] = M.sqrt(M.pow(-ez[i][j] * hy[i][j], 2) + M.pow(ez[i][j] * hx[i][j], 2))
         return Pz
 

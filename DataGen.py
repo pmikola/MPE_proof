@@ -1,6 +1,6 @@
 # INPUT DATA FOR GAN NETWORK GENERATOR
 import os
-
+from os import walk
 import FDTD_2d
 from C import C
 import numpy as np
@@ -11,29 +11,7 @@ from numba import cuda, vectorize, guvectorize, jit, njit
 import time
 import pickle
 
-# ------------------------------- INIT --------------------------
-cc = C()
-path = 'DATASET/training'
-names_field = []
-names_struct = []
-names_meta = []
-plot_flag = 0
-show_structure = 0
-plot_period = 5000  # ms
-grid_size = 250  # 300
-nsteps = 500  # 750
-save_flag = 0
-check_data = 0
-DataNum = 1
-frame_interval = 8
 
-
-
-
-# np.random.seed(2022)
-# np.random.seed(828)
-
-# ------------------------------- INIT --------------------------
 # ------------------------------- FUNCTIONS --------------------------
 def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures, grid_size, plot_flag, show_structure,
                   pulse_len, freq,
@@ -78,7 +56,8 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
     for i in range(0, len(Generated_Structure[0])):
         x_pair = Generated_Structure[0][i]
         y_pair = Generated_Structure[1][i]
-        if x_pair > grid_size or y_pair > grid_size:
+        if x_pair > grid_size-1 or y_pair > grid_size-1:
+            print(x_pair, y_pair)
             pass
         else:
             Gen_Structure[int(x_pair)][int(y_pair)] = 1.
@@ -90,12 +69,18 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
     return SIM, Gen_Structure
 
 
-def Check_Data(SIM, check_data, nsteps, frame_interval, grid_size, names_struct):
+def Check_Data(SIM, check_data,data_num, nsteps, frame_interval, grid_size, names_struct, names_field, names_meta, path):
     if check_data == 1:
         T = 0
         ims = []
         print("SavedDataVisCheck")
-        Loaded_Structure = np.load(os.path.join(path, names_struct[0] + '.npy'))
+        f = []
+        for (dirpath, dirnames, filenames) in walk(path):
+            f.extend(filenames)
+            break
+        print(f)
+        time.sleep(100)
+        Loaded_Structure = np.load(os.path.join(path, names_struct[data_num] + '.npy'))
         fig = plt.figure(figsize=(5, 5))
         grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
         ay = fig.add_subplot(grid[:, :])
@@ -104,7 +89,7 @@ def Check_Data(SIM, check_data, nsteps, frame_interval, grid_size, names_struct)
         fig = plt.figure(figsize=(5, 5))
         grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
         ay = fig.add_subplot(grid[:, :])
-        Loaded_Field = np.load(os.path.join(path, names_field[0] + '.npy'))
+        Loaded_Field = np.load(os.path.join(path, names_field[data_num] + '.npy'))
         for n in range(0, nsteps):
             T += 1
             if T % frame_interval == 0:
@@ -115,61 +100,58 @@ def Check_Data(SIM, check_data, nsteps, frame_interval, grid_size, names_struct)
                 ims.append([ims0])
         ani = animation.ArtistAnimation(fig, ims, interval=30, blit=True)
         plt.show()
-        Loaded_Meta = np.load(os.path.join(path, names_meta[0] + '.npy'))
+        Loaded_Meta = np.load(os.path.join(path, names_meta[data_num] + '.npy'))
         print(Loaded_Meta)
     else:
         pass
 
 
+def Generate(DataNum, frame_interval, plot_period, grid_size, plot_flag, show_structure, save_flag, check_data, nsteps,
+             names_struct, names_field, names_meta, path,data_num):
+    for i in range(0, DataNum):
+        particle_scale = 0  # 0 = lambda, 1 = lambda/10, else = lambda*10
+        num_of_structures = np.random.randint(1, 20)
+        pulse_len = np.random.randint(0, grid_size)
+        n_index = np.random.uniform(1, 10)  # cc.nSiO2
+        sigma = np.random.uniform(1, 10)  # cc.sigmaSiO2
+        wavelength = np.random.randint(250, 2500)
+        freq = C.WavelengthToFrequency(np.random.uniform(250E-9,2500E-9), 1)  # 454.231E12
+        # time.sleep(10)
+
+        pulse_width = 1
+        pulse_height = 1
+        pulse_loc_x = np.random.randint(3, grid_size - 3)
+        pulse_loc_y = np.random.randint(3, grid_size - 3)
+
+        SIM, Gen_Structure = DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures, grid_size,
+                                           plot_flag,
+                                           show_structure,
+                                           pulse_len,
+                                           freq, nsteps,
+                                           pulse_loc_x, pulse_loc_y, pulse_width, pulse_height, n_index, sigma)
+
+        Meta_Data = np.array(
+            [nsteps, grid_size, pulse_len, n_index, sigma, wavelength, freq, pulse_width, pulse_height, pulse_loc_x,
+             pulse_loc_y])
+        if save_flag == 1:
+            names_field.append("Gen_Field_" + str(i))
+            names_struct.append("Gen_Structure_" + str(i))
+            names_meta.append("Meta_Data_" + str(i))
+            np.save(os.path.join(path, names_field[i]), SIM.FieldProp)
+            np.save(os.path.join(path, names_struct[i]), Gen_Structure)
+            np.save(os.path.join(path, names_meta[i]), Meta_Data)
+        if plot_flag == 1:
+            if show_structure == 1:
+                fig = plt.figure(figsize=(5, 5))
+                timer = fig.canvas.new_timer(interval=5000)
+                timer.add_callback(plt.close)
+                grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
+                ay = fig.add_subplot(grid[:, :])
+                # ay.plot(x_fig, y_fig, alpha=0)
+                ay.imshow(Gen_Structure)
+                timer.start()
+                plt.show()
+        Check_Data(SIM, check_data,data_num, nsteps, frame_interval, grid_size, names_struct, names_field, names_meta, path)
+        del SIM, Gen_Structure
+
 # ------------------------------- FUNCTIONS --------------------------
-
-# ------------------------------- DATA GEN --------------------------
-for i in range(0, DataNum):
-    particle_scale = 0  # 0 = lambda, 1 = lambda/10, else = lambda*10
-    num_of_structures = np.random.randint(1, 20)
-    pulse_len = np.random.randint(0, grid_size)
-    n_index = np.random.uniform(1, 10)  # cc.nSiO2
-    sigma = np.random.uniform(1, 10)  # cc.sigmaSiO2
-    wavelength = np.random.randint(250, 2500)
-    freq = C.WavelengthToFrequency(660E-9, 1)  # 454.231E12
-    # time.sleep(10)
-
-    pulse_width = 1
-    pulse_height = 1
-    pulse_loc_x = np.random.randint(3, grid_size - 3)
-    pulse_loc_y = np.random.randint(3, grid_size - 3)
-
-    SIM, Gen_Structure = DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures, grid_size,
-                                       plot_flag,
-                                       show_structure,
-                                       pulse_len,
-                                       freq, nsteps,
-                                       pulse_loc_x, pulse_loc_y, pulse_width, pulse_height, n_index, sigma)
-
-    Meta_Data = np.array(
-        [nsteps, grid_size, pulse_len, n_index, sigma, wavelength, freq, pulse_width, pulse_height, pulse_loc_x,
-         pulse_loc_y])
-    if save_flag == 1:
-        names_field.append("Gen_Field_" + str(i))
-        names_struct = ["Gen_Structure_" + str(i)]
-        names_meta = ["Meta_Data_" + str(i)]
-        np.save(os.path.join(path, names_field[i]), SIM.FieldProp)
-        np.save(os.path.join(path, names_struct[i]), Gen_Structure)
-        np.save(os.path.join(path, names_meta[i]), Meta_Data)
-
-    else:
-        pass
-
-    if plot_flag == 1:
-        if show_structure == 1:
-            fig = plt.figure(figsize=(5, 5))
-            timer = fig.canvas.new_timer(interval=5000)
-            timer.add_callback(plt.close)
-            grid = plt.GridSpec(20, 20, wspace=10, hspace=0.6)
-            ay = fig.add_subplot(grid[:, :])
-            # ay.plot(x_fig, y_fig, alpha=0)
-            ay.imshow(Gen_Structure)
-            timer.start()
-            plt.show()
-    Check_Data(SIM, check_data, nsteps, frame_interval, grid_size, names_struct)
-    del SIM, Gen_Structure

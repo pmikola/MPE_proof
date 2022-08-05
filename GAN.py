@@ -1,8 +1,22 @@
 import torch
 import torch.nn as nn
-
+from __future__ import print_function
+#%matplotlib inline
+import argparse
+import os
+import random
+import torch
+import torch.nn as nn
+import torch.nn.parallel
+import torch.backends.cudnn as cudnn
+import torch.optim as optim
+import torch.utils.data
+import torchvision.datasets as dset
+import torchvision.transforms as transforms
+import torchvision.utils as vutils
 
 # DCGAN ARCHITECTURE https://arxiv.org/pdf/1511.06434.pdf
+
 class Generator(nn.Module):
     def __init__(self, input_data):
         super(Generator, self).__init__()
@@ -31,8 +45,3 @@ class Generator(nn.Module):
 
     def forward(self, x):
         return self.activation(self.dense_layer(x))
-
-#
-# class Discriminator(nn.Module):
-#     def __init__(self, input_data):
-#         super(Discriminator, self).__init__()
