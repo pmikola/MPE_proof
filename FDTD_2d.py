@@ -283,15 +283,15 @@ class FDTD:
                 pass
         if self.particle_scale == 0:
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, scale)
                 cr.rectangle(x1, y1, x2, y2)
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, 2 * M.pi)
                 y3 = np.random.uniform(0, 2 * M.pi)
                 cr.arc(x1, y1, x2, y2, y3)
@@ -300,15 +300,15 @@ class FDTD:
 
         elif self.particle_scale == 1:
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale / 10)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, scale / 10)
                 cr.rectangle(x1, y1, x2, y2)
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale / 10)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, 2 * M.pi)
                 y3 = np.random.uniform(0, 2 * M.pi)
                 cr.arc(x1, y1, x2, y2, y3)
@@ -316,15 +316,15 @@ class FDTD:
                 cr.close_path()
         else:
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale * 10)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, scale * 10)
                 cr.rectangle(x1, y1, x2, y2)
             for i in range(0, self.num_of_structures):
-                x1 = np.random.uniform(0, self.IE)
+                x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale * 10)
-                y1 = np.random.uniform(0, self.JE)
+                y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, 2 * M.pi)
                 y3 = np.random.uniform(0, 2 * M.pi)
                 cr.arc(x1, y1, x2, y2, y3)
