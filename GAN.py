@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from __future__ import print_function
-#%matplotlib inline
+
+# %matplotlib inline
 import argparse
 import os
 import random
@@ -15,33 +15,71 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
+
 # DCGAN ARCHITECTURE https://arxiv.org/pdf/1511.06434.pdf
 
+# Generator Code
+
 class Generator(nn.Module):
-    def __init__(self, input_data):
+    def __init__(self, ngpu,nz,ngf,nc):
         super(Generator, self).__init__()
-        self.noise_size = input_data.shape
-        self.input_data = input_data
-        # nn.Sequential create container for
-        self.model = nn.Sequential(
-            nn.ConvTranspose2d(self.noise_size, 512, kernel_size=4, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(512),
+        self.nz = nz
+        self.ngf = ngf
+        self.ngpu = ngpu
+        self.nc = nc
+        self.main = nn.Sequential(
+            # input is Z, going into a convolution
+            nn.ConvTranspose2d( self.nz, self.ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(self.ngf * 8),
             nn.ReLU(True),
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(256),
+            # state size. (ngf*8) x 4 x 4
+            nn.ConvTranspose2d(self.ngf * 8, self.ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ngf * 4),
             nn.ReLU(True),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(128),
+            # state size. (ngf*4) x 8 x 8
+            nn.ConvTranspose2d( self.ngf * 4, self.ngf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ngf * 2),
             nn.ReLU(True),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64),
+            # state size. (ngf*2) x 16 x 16
+            nn.ConvTranspose2d( self.ngf * 2, self.ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ngf),
             nn.ReLU(True),
-            nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1, bias=False),
+            # state size. (ngf) x 32 x 32
+            nn.ConvTranspose2d( self.ngf, self.nc, 4, 2, 1, bias=False),
             nn.Tanh()
+            # state size. (nc) x 64 x 64
         )
 
     def forward(self, input):
-        return self.model(input)
+        return self.main(input)
 
-    def forward(self, x):
-        return self.activation(self.dense_layer(x))
+
+class Discriminator(nn.Module):
+    def __init__(self, ngpu,ndf,nc):
+        super(Discriminator, self).__init__()
+        self.ngpu = ngpu
+        self.ndf = ndf
+        self.nc = nc
+        self.main = nn.Sequential(
+            # input is (nc) x 64 x 64
+            nn.Conv2d(self.nc, self.ndf, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf) x 32 x 32
+            nn.Conv2d(self.ndf, self.ndf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ndf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*2) x 16 x 16
+            nn.Conv2d(self.ndf * 2, self.ndf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ndf * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*4) x 8 x 8
+            nn.Conv2d(self.ndf * 4, self.ndf * 8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.ndf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*8) x 4 x 4
+            nn.Conv2d(self.ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, input):
+        return self.main(input)

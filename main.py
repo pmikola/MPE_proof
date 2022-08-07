@@ -1,6 +1,7 @@
 from __future__ import print_function
-
+from matplotlib.artist import Artist
 import time
+from GAN import Generator, Discriminator
 import matplotlib.cm as cm
 import DataGen
 from C import C
@@ -55,8 +56,8 @@ batch_size = 128
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
 image_size = 64
-# Number of channels in the training images. For color images this is 3
-nc = 3
+# Number of channels in the training images. For gray scale tensor image nc is 1
+nc = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100
 # Size of feature maps in generator
@@ -115,48 +116,89 @@ device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else 
 if show_training_set == True:
     fig = plt.figure(figsize=(10, 4))
     grid = plt.GridSpec(100, 100, wspace=10, hspace=0.6)
-    plt.title("Training Images Discriminator")
+    plt.title("Training | Fields | Discriminator")
     plt.axis("off")
     ims = []
     axes = []
-    T = 0
-    for i in range(0,len(names_struct)):
+
+    for i in range(0, len(names_struct)):
+        T = 0
+        ims_tmp = []
         if i < 5:
-            ax = fig.add_subplot(grid[0:49, 20*i:20*i+20])
+            ax = fig.add_subplot(grid[0:49, 20 * i:20 * i + 20])
         else:
-            ax = fig.add_subplot(grid[51:100, 20 * (i-5):20 * (i-5) + 20])
+            ax = fig.add_subplot(grid[51:100, 20 * (i - 5):20 * (i - 5) + 20])
         axes.append(ax)
         axes[i].axis("off")
         for n in range(0, nsteps):
             T += 1
             if T % frame_interval == 0:
                 ims_fields = axes[i].imshow(np.transpose(
-                    vutils.make_grid(fields_tensor[i][:, grid_size * n - grid_size: grid_size * n].to(device), cmap=cm.hot,
+                    vutils.make_grid(fields_tensor[i][:, grid_size * n - grid_size: grid_size * n].to(device),
+                                     cmap=cm.hot,
                                      extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
-                                     padding=2, normalize=True, ).cpu(), (1, 2, 0)))
+                                     padding=2, normalize=True).cpu(), (1, 2, 0)))
                 ims.append([ims_fields])
     ani = animation.ArtistAnimation(fig, ims, interval=30, blit=True)
     plt.show()
 
-
     fig = plt.figure(figsize=(10, 4))
-    plt.title("Training Images Generator")
+    plt.title("Training | Structures | Generator")
     del axes
     axes = []
     plt.axis("off")
-    for i in range(0,len(names_struct)):
+    for i in range(0, len(names_struct)):
         if i < 5:
-            ay = fig.add_subplot(grid[0:49, 20*i:20*i+20])
+            ay = fig.add_subplot(grid[0:49, 20 * i:20 * i + 20])
         else:
-            ay = fig.add_subplot(grid[51:100, 20 * (i-5):20 * (i-5) + 20])
+            ay = fig.add_subplot(grid[51:100, 20 * (i - 5):20 * (i - 5) + 20])
         axes.append(ay)
         axes[i].axis("off")
         axes[i].imshow(np.transpose(
-                    vutils.make_grid(structures_tensor[i].to(device),
-                                     extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
-                                     padding=2, ).cpu(), (1, 2, 0)))
+            vutils.make_grid(structures_tensor[i].to(device),
+                             extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
+                             padding=2, normalize=True).cpu(), (1, 2, 0)))
     plt.show()
 
     print(metas_tensor)
 else:
     pass
+
+
+# custom weights initialization called on netG and netD
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        nn.init.normal_(m.weight.data, 1.0, 0.02)
+        nn.init.constant_(m.bias.data, 0)
+
+
+# Create the generator
+netG = Generator(ngpu,nz,ngf,nc).to(device)
+
+# Handle multi-gpu if desired
+if (device.type == 'cuda') and (ngpu > 1):
+    netG = nn.DataParallel(netG, list(range(ngpu)))
+
+# Apply the weights_init function to randomly initialize all weights
+#  to mean=0, stdev=0.02.
+netG.apply(weights_init)
+
+# Print the model
+print(netG)
+
+# Create the Discriminator
+netD = Discriminator(ngpu,ndf,nc).to(device)
+
+# Handle multi-gpu if desired
+if (device.type == 'cuda') and (ngpu > 1):
+    netD = nn.DataParallel(netD, list(range(ngpu)))
+
+# Apply the weights_init function to randomly initialize all weights
+#  to mean=0, stdev=0.2.
+netD.apply(weights_init)
+
+# Print the model
+print(netD)
