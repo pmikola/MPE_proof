@@ -20,7 +20,8 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
-from matplotlib import pyplot as plt, animation
+from matplotlib import pyplot as plt
+import matplotlib.artist as artist
 import matplotlib.animation as animation
 from IPython.display import HTML
 
@@ -102,17 +103,6 @@ for i in range(0, len(names_struct)):
     fields_tensor[i] = field_tensor
     metas_tensor[i] = meta_tensor
 
-# Create the dataloader
-dataloader_fields = torch.utils.data.DataLoader(fields_tensor, num_workers=workers, batch_size=batch_size,
-                                                shuffle=True, )
-dataloader_structures = torch.utils.data.DataLoader(structures_tensor, num_workers=workers, batch_size=batch_size,
-                                                    shuffle=True, )
-dataloader_metas = torch.utils.data.DataLoader(metas_tensor, num_workers=workers, batch_size=batch_size,
-                                               shuffle=True, )
-device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-# Plot some training images
-
-# print(fields_tensor[0][:,0:nsteps].size())
 if show_training_set == True:
     fig = plt.figure(figsize=(10, 4))
     grid = plt.GridSpec(100, 100, wspace=10, hspace=0.6)
@@ -120,7 +110,8 @@ if show_training_set == True:
     plt.axis("off")
     ims = []
     axes = []
-    ims_tmp = []
+    # ims_tmp = [fields_tensor[0][:, grid_size - grid_size: grid_size]]*len(names_struct)
+
     for i in range(0, len(names_struct)):
         T = 0
         if i < 5:
@@ -138,7 +129,6 @@ if show_training_set == True:
                                      extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
                                      padding=2, normalize=True).cpu(), (1, 2, 0)))
                 ims.append([ims_fields])
-
     ani = animation.ArtistAnimation(fig, ims, interval=30, blit=True)
     plt.show()
 
@@ -164,6 +154,23 @@ if show_training_set == True:
 else:
     pass
 
+# Create Train Sets
+trainset_fields = torch.utils.data.TensorDataset(torch.FloatTensor(fields_tensor))
+trainset_structures = torch.utils.data.TensorDataset(torch.FloatTensor(structures_tensor))
+trainset_metas = torch.utils.data.TensorDataset(torch.FloatTensor(metas_tensor))
+print(trainset_fields[0][0].shape)
+print(trainset_fields[1][0].shape)
+#
+# time.sleep(10)
+# Create the dataloader
+dataloader_fields = torch.utils.data.DataLoader(trainset_fields, batch_size=batch_size,
+                                                shuffle=True)
+dataloader_structures = torch.utils.data.DataLoader(trainset_structures, batch_size=batch_size,
+                                                    shuffle=True)
+dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
+                                               shuffle=True)
+device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+
 
 # custom weights initialization called on netG and netD from random distribution with
 # mean = 0 | and stdev = 0.02
@@ -177,7 +184,7 @@ def weights_init(m):
 
 
 # Create the generator
-netG = Generator(ngpu,nz,ngf,nc).to(device)
+netG = Generator(ngpu, nz, ngf, nc).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -191,7 +198,7 @@ netG.apply(weights_init)
 print(netG)
 
 # Create the Discriminator
-netD = Discriminator(ngpu,ndf,nc).to(device)
+netD = Discriminator(ngpu, ndf, nc).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -203,7 +210,6 @@ netD.apply(weights_init)
 
 # Print the model
 print(netD)
-
 
 # Initialize BCELoss function
 criterion = nn.BCELoss()
@@ -220,7 +226,6 @@ fake_label = 0.
 optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 
-
 # Training Loop
 
 # Lists to keep track of progress
@@ -234,7 +239,10 @@ print("Starting Training Loop...")
 for epoch in range(num_epochs):
     # For each batch in the dataloader
     for i, data in enumerate(dataloader_fields, 0):
-
+        # inputs = data
+        # inputs = np.array(inputs[0][0][:])
+        # print(inputs.shape)
+        # Run your training process
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
@@ -296,17 +304,17 @@ for epoch in range(num_epochs):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader_fields)-1)):
+        if (iters % 500 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader_fields) - 1)):
             with torch.no_grad():
                 fake = netG(fixed_noise).detach().cpu()
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
         iters += 1
 
-plt.figure(figsize=(10,5))
+plt.figure(figsize=(10, 5))
 plt.title("Generator and Discriminator Loss During Training")
-plt.plot(G_losses,label="G")
-plt.plot(D_losses,label="D")
+plt.plot(G_losses, label="G")
+plt.plot(D_losses, label="D")
 plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
