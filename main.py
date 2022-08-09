@@ -1,4 +1,5 @@
 from __future__ import print_function
+
 from matplotlib.artist import Artist
 import time
 from GAN import Generator, Discriminator
@@ -58,9 +59,9 @@ batch_size = 128
 #   size using a transformer.
 image_size = 64
 # Number of channels in the training images. For gray scale tensor image nc is 1
-nc = 1
+nc = 10
 # Size of z latent vector (i.e. size of generator input)
-nz = 100
+nz = 10  # 100
 # Size of feature maps in generator
 ngf = 64
 # Size of feature maps in discriminator
@@ -124,7 +125,7 @@ if show_training_set == True:
             T += 1
             if T % frame_interval == 0:
                 ims_fields = axes[i].imshow(np.transpose(
-                    vutils.make_grid(fields_tensor[i][:, grid_size * n - grid_size: grid_size * n].to(device),
+                    vutils.make_grid(fields_tensor[i][:, grid_size * n - grid_size: grid_size * n],
                                      cmap=cm.hot,
                                      extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
                                      padding=2, normalize=True).cpu(), (1, 2, 0)))
@@ -144,10 +145,10 @@ if show_training_set == True:
             ay = fig.add_subplot(grid[51:100, 20 * (i - 5):20 * (i - 5) + 20])
         axes.append(ay)
         axes[i].axis("off")
-        axes[i].imshow(np.transpose(
-            vutils.make_grid(structures_tensor[i].to(device),
-                             extent=[0, grid_size * metas_tensor[i][13], 0, grid_size * metas_tensor[i][13]],
-                             padding=2, normalize=True).cpu(), (1, 2, 0)))
+        axes[i].imshow(np.transpose(vutils.make_grid(structures_tensor[i],
+                                                     extent=[0, grid_size * metas_tensor[i][13], 0,
+                                                             grid_size * metas_tensor[i][13]],
+                                                     padding=2, normalize=True).cpu(), (1, 2, 0)))
     plt.show()
 
     print(metas_tensor)
@@ -158,8 +159,8 @@ else:
 trainset_fields = torch.utils.data.TensorDataset(torch.FloatTensor(fields_tensor))
 trainset_structures = torch.utils.data.TensorDataset(torch.FloatTensor(structures_tensor))
 trainset_metas = torch.utils.data.TensorDataset(torch.FloatTensor(metas_tensor))
-print(trainset_fields[0][0].shape)
-print(trainset_fields[1][0].shape)
+# print(trainset_fields[0][0].shape)
+# print(trainset_fields[:][0].shape)
 #
 # time.sleep(10)
 # Create the dataloader
@@ -170,7 +171,8 @@ dataloader_structures = torch.utils.data.DataLoader(trainset_structures, batch_s
 dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
                                                shuffle=True)
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-
+print(torch.cuda.is_available())
+print(torch.cuda.get_device_name(0))
 
 # custom weights initialization called on netG and netD from random distribution with
 # mean = 0 | and stdev = 0.02
@@ -213,6 +215,7 @@ print(netD)
 
 # Initialize BCELoss function
 criterion = nn.BCELoss()
+# criterion = nn.CrossEntropyLoss()
 
 # Create batch of latent vectors that we will use to visualize
 #  the progression of the generator
@@ -226,7 +229,7 @@ fake_label = 0.
 optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 
-# Training Loop
+############### Training Loop
 
 # Lists to keep track of progress
 img_list = []
@@ -239,9 +242,10 @@ print("Starting Training Loop...")
 for epoch in range(num_epochs):
     # For each batch in the dataloader
     for i, data in enumerate(dataloader_fields, 0):
-        # inputs = data
-        # inputs = np.array(inputs[0][0][:])
-        # print(inputs.shape)
+
+        inputs = data
+        inputs = np.array(inputs[0])
+        #print(inputs.shape)
         # Run your training process
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -249,11 +253,16 @@ for epoch in range(num_epochs):
         ## Train with all-real batch
         netD.zero_grad()
         # Format batch
+
         real_cpu = data[0].to(device)
-        b_size = real_cpu.size(0)
+        # b_size = real_cpu.size(0)
+        b_size = 1
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
+
         # Forward pass real batch through D
-        output = netD(real_cpu).view(-1)
+        # output = netD(real_cpu).view(-1)
+        output = netD(real_cpu).view(1)
+
         # Calculate loss on all-real batch
         errD_real = criterion(output, label)
         # Calculate gradients for D in backward pass
@@ -262,12 +271,18 @@ for epoch in range(num_epochs):
 
         ## Train with all-fake batch
         # Generate batch of latent vectors
-        noise = torch.randn(b_size, nz, 1, 1, device=device)
+        noise = torch.randn(b_size, 1, 1, 1, device=device)
+
         # Generate fake image batch with G
         fake = netG(noise)
+        print(fake.shape)
         label.fill_(fake_label)
+
         # Classify all fake batch with D
-        output = netD(fake.detach()).view(-1)
+        output = netD(fake.detach()).view(1)
+
+        # output = netD(fake.detach()).view(-1)
+
         # Calculate D's loss on the all-fake batch
         errD_fake = criterion(output, label)
         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
