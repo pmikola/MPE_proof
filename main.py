@@ -28,7 +28,7 @@ from IPython.display import HTML
 
 # ------------------------------- INIT --------------------------
 cc = C()
-path = 'DATASET/training'
+path = 'DATASET/training_main'
 names_field = []
 names_struct = []
 names_meta = []
@@ -44,36 +44,41 @@ check_data = 0
 # nuber of the dataset to check
 check_file_dataset = 0
 # number of sims
-DataNum = 1
+DataNum = 10
 frame_interval = 8
 dataset_size = DataNum
 plot_period = 5000  # ms
 grid_size = 250  # 300
-nsteps = 500  # 750
+nsteps = 750
 
+# Discriminator input and Generator output dimensions
+x_size, y_size = 250, 250
 # Number of workers for dataloader
 workers = 2
 # Batch size during training
-batch_size = 128
+batch_size = 5
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-image_size = 64
-# Number of channels in the training images. For gray scale tensor image nc is 1
-nc = 10
+image_size = x_size * y_size
+# Number of output channels
+nc = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 10  # 100
+nz = 100  # 100
 # Size of feature maps in generator
-ngf = 64
+ngf = 250
 # Size of feature maps in discriminator
-ndf = 64
+ndf = 250
 # Number of training epochs
-num_epochs = 5
+num_epochs = 15
 # Learning rate for optimizers
 lr = 0.0002
 # Beta1 hyperparam for Adam optimizers
 beta1 = 0.5
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 1
+# Show shapes of Gen and Disc in and out
+shape_stat = 0
+# Showing samples from training set
 show_training_set = False
 # np.random.seed(2022)
 # np.random.seed(828)
@@ -113,7 +118,7 @@ if show_training_set == True:
     axes = []
     # ims_tmp = [fields_tensor[0][:, grid_size - grid_size: grid_size]]*len(names_struct)
 
-    for i in range(0, len(names_struct)):
+    for i in range(0, 10):
         T = 0
         if i < 5:
             ax = fig.add_subplot(grid[0:49, 20 * i:20 * i + 20])
@@ -138,7 +143,7 @@ if show_training_set == True:
     del axes
     axes = []
     plt.axis("off")
-    for i in range(0, len(names_struct)):
+    for i in range(0, 10):
         if i < 5:
             ay = fig.add_subplot(grid[0:49, 20 * i:20 * i + 20])
         else:
@@ -160,7 +165,7 @@ trainset_fields = torch.utils.data.TensorDataset(torch.FloatTensor(fields_tensor
 trainset_structures = torch.utils.data.TensorDataset(torch.FloatTensor(structures_tensor))
 trainset_metas = torch.utils.data.TensorDataset(torch.FloatTensor(metas_tensor))
 # print(trainset_fields[0][0].shape)
-# print(trainset_fields[:][0].shape)
+
 #
 # time.sleep(10)
 # Create the dataloader
@@ -171,8 +176,10 @@ dataloader_structures = torch.utils.data.DataLoader(trainset_structures, batch_s
 dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
                                                shuffle=True)
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-print(torch.cuda.is_available())
+
 print(torch.cuda.get_device_name(0))
+torch.cuda.empty_cache()
+
 
 # custom weights initialization called on netG and netD from random distribution with
 # mean = 0 | and stdev = 0.02
@@ -186,7 +193,7 @@ def weights_init(m):
 
 
 # Create the generator
-netG = Generator(ngpu, nz, ngf, nc).to(device)
+netG = Generator(ngpu, nz, ngf, nc, x_size, y_size, batch_size).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -200,7 +207,7 @@ netG.apply(weights_init)
 print(netG)
 
 # Create the Discriminator
-netD = Discriminator(ngpu, ndf, nc).to(device)
+netD = Discriminator(ngpu, ndf, nc, x_size, y_size, batch_size).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -218,8 +225,8 @@ criterion = nn.BCELoss()
 # criterion = nn.CrossEntropyLoss()
 
 # Create batch of latent vectors that we will use to visualize
-#  the progression of the generator
-fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+#  the progression of the generator #64
+fixed_noise = torch.randn(batch_size, nz, nz, device=device)
 
 # Establish convention for real and fake labels during training
 real_label = 1.
@@ -241,28 +248,36 @@ print("Starting Training Loop...")
 # For each epoch
 for epoch in range(num_epochs):
     # For each batch in the dataloader
-    for i, data in enumerate(dataloader_fields, 0):
-
-        inputs = data
-        inputs = np.array(inputs[0])
-        #print(inputs.shape)
-        # Run your training process
+    for batch_idx, data in enumerate(dataloader_structures, 0):
+        if shape_stat == 1:
+            inputs = data
+            inputs = np.array(inputs[0])
+            print(inputs.shape)
+            print("Input Batch\n--------------------------\n")
+        # # Run your training process
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
         ## Train with all-real batch
         netD.zero_grad()
         # Format batch
+        # real = torch.tensor(data[batch_idx].unsqueeze(dim=2))
+        # real = torch.tensor(data[0])
+        real = data[0].clone().detach().requires_grad_(True).to(device)
+        # real = real.view(-1, x_size * y_size).to(device)
 
-        real_cpu = data[0].to(device)
-        # b_size = real_cpu.size(0)
-        b_size = 1
+        b_size = real.shape[0]
+
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
 
         # Forward pass real batch through D
         # output = netD(real_cpu).view(-1)
-        output = netD(real_cpu).view(1)
-
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+        output = netD(real).view(-1)
+        if shape_stat == 1:
+            print(output.shape)
+            print("Out:NetD - real batch\n--------------------------\n")
+            time.sleep(4)
         # Calculate loss on all-real batch
         errD_real = criterion(output, label)
         # Calculate gradients for D in backward pass
@@ -271,16 +286,27 @@ for epoch in range(num_epochs):
 
         ## Train with all-fake batch
         # Generate batch of latent vectors
-        noise = torch.randn(b_size, 1, 1, 1, device=device)
-
+        noise = torch.randn(b_size, nz, nz, device=device)
+        if shape_stat == 1:
+            print(noise.shape)
+            print("Random noise\n--------------------------\n")
+            time.sleep(4)
         # Generate fake image batch with G
         fake = netG(noise)
-        print(fake.shape)
+        if shape_stat == 1:
+            print(fake.shape)
+            print("NetG out - fake gen\n--------------------------\n")
+            time.sleep(4)
+        # print(fake.shape)
+        # time.sleep(4)
         label.fill_(fake_label)
 
         # Classify all fake batch with D
-        output = netD(fake.detach()).view(1)
-
+        output = netD(fake.detach()).view(-1)
+        if shape_stat == 1:
+            print(output.shape)
+            print("NetD out - fake disc\n--------------------------\n")
+            time.sleep(4)
         # output = netD(fake.detach()).view(-1)
 
         # Calculate D's loss on the all-fake batch
@@ -309,9 +335,9 @@ for epoch in range(num_epochs):
         optimizerG.step()
 
         # Output training stats
-        if i % 50 == 0:
+        if i % 5 == 0:
             print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                  % (epoch, num_epochs, i, len(dataloader_fields),
+                  % (epoch, num_epochs, i, len(dataloader_structures),
                      errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
         # Save Losses for plotting later
@@ -319,7 +345,7 @@ for epoch in range(num_epochs):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 500 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader_fields) - 1)):
+        if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader_structures) - 1)):
             with torch.no_grad():
                 fake = netG(fixed_noise).detach().cpu()
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))

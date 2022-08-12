@@ -151,8 +151,14 @@ def Generate(DataNum, frame_interval, plot_period, grid_size, plot_flag, show_st
              names_struct, names_field, names_meta, path, check_file_dataset, generate):
     for i in range(0, DataNum):
         if generate == 1:
-            particle_scale = 0  # 0 = lambda, 1 = lambda/10, else = lambda*10
-            num_of_structures = np.random.randint(1, 20)
+            num_of_structures = 0
+            particle_scale = np.random.uniform(0,2)  # 0 = lambda, 1 = lambda/10, else = lambda*10
+            if particle_scale == 0:
+                num_of_structures = np.random.randint(1, 20)
+            elif particle_scale == 1:
+                num_of_structures = np.random.randint(1, 100)
+            else:
+                num_of_structures = np.random.randint(1, 4)
             pulse_len = np.random.randint(0, grid_size)
             n_index = np.random.uniform(1, 10)  # cc.nSiO2
             sigma = np.random.uniform(1, 10)  # cc.sigmaSiO2

@@ -5,8 +5,11 @@ import torch.nn as nn
 
 # Generator Code
 class Generator(nn.Module):
-    def __init__(self, ngpu, nz, ngf, nc):
+    def __init__(self, ngpu, nz, ngf, nc, x_size, y_size, batch_size):
         super(Generator, self).__init__()
+        self.y_size = y_size
+        self.x_size = x_size
+        self.batch_size = batch_size
         self.nz = nz
         self.ngf = ngf
         self.ngpu = ngpu
@@ -15,27 +18,20 @@ class Generator(nn.Module):
         # self.meta = meta
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            # nn.ConvTranspose2d(1, 10, (250, 124750), bias=False),
-            nn.ConvTranspose2d(1, 10, (250, 124750)),
-            # nn.ConvTranspose2d(self.nz, self.ngf * 8, 4, 1, 0, bias=False),
-            # nn.BatchNorm2d(self.ngf * 8),
-            # nn.ReLU(True),
-            # # state size. (ngf*8) x 4 x 4
-            # nn.ConvTranspose2d(self.ngf * 8, self.ngf * 4, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ngf * 4),
-            # nn.ReLU(True),
-            # # state size. (ngf*4) x 8 x 8
-            # nn.ConvTranspose2d(self.ngf * 4, self.ngf * 2, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ngf * 2),
-            # nn.ReLU(True),
-            # # state size. (ngf*2) x 16 x 16
-            # nn.ConvTranspose2d(self.ngf * 2, self.ngf, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ngf),
-            # nn.ReLU(True),
-            # # state size. (ngf) x 32 x 32
-            # nn.ConvTranspose2d(self.ngf, self.nc, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(self.batch_size, self.nz, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0),
+                               bias=False),
+            nn.BatchNorm1d(self.nz),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(self.nz, self.nz * 5, kernel_size=(5, 5), stride=(5,5), padding=(0, 0),
+                               bias=False),
+            nn.BatchNorm1d(self.nz * 5),
+            nn.ReLU(True),
+            nn.Conv2d(self.nz * 5, int(self.nz * 2.5), kernel_size=(2, 2), stride=(2, 2), padding=(0, 0), bias=False),
+            nn.BatchNorm1d(int(self.nz * 2.5)),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(int(self.nz * 2.5), self.batch_size, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0), bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Tanh()
-            # state size. (nc) x 64 x 64
         )
 
     def forward(self, input):
@@ -44,31 +40,39 @@ class Generator(nn.Module):
 
 # Discriminator Code
 class Discriminator(nn.Module):
-    def __init__(self, ngpu, ndf, nc):
+    def __init__(self, ngpu, ndf, nc, x_size, y_size, batch_size):
         super(Discriminator, self).__init__()
+        self.batch_size = batch_size
         self.ngpu = ngpu
         self.ndf = ndf
         self.nc = nc
+        self.x_size = x_size
+        self.y_size = y_size
         # self.fields = fields
         self.main = nn.Sequential(
-            # input is (nc) x 64 x 64
-            nn.Conv2d(10, 1, (250, 124750)),
-            # nn.Conv2d(self.nc, self.ndf, 4, 2, 1, bias=False),
+            # input is (nc) x x_size x y_size nn.Conv2d(in_channels=self.nc,  out_channels=self.nc, kernel_size=(
+            # self.x_size, self.y_size), stride=1, padding=0),
+            nn.Conv2d(self.batch_size, self.nc, kernel_size=(1, 1), stride=(2, 2), padding=(1, 1), bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # # state size. (ndf) x 32 x 32
-            # nn.Conv2d(self.ndf, self.ndf * 2, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ndf * 2),
-            # nn.LeakyReLU(0.2, inplace=True),
-            # # state size. (ndf*2) x 16 x 16
-            # nn.Conv2d(self.ndf * 2, self.ndf * 4, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ndf * 4),
-            # nn.LeakyReLU(0.2, inplace=True),
-            # # state size. (ndf*4) x 8 x 8
-            # nn.Conv2d(self.ndf * 4, self.ndf * 8, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(self.ndf * 8),
-            # nn.LeakyReLU(0.2, inplace=True),
-            # # state size. (ndf*8) x 4 x 4
-            # nn.Conv2d(self.ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Conv2d(self.nc, self.nc * 2, kernel_size=(2, 2), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc*64),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 2, self.nc * 4, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc * 32),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 4, self.nc * 8, kernel_size=(12, 12), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc * 12),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 8, self.nc * 16, kernel_size=(8, 8), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 16, self.nc * 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 32, self.nc * 64, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1), bias=False),
+            nn.BatchNorm1d(self.nc * 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.nc * 64, self.batch_size, kernel_size=(2, 2), stride=(2, 2), padding=(1, 1), bias=False),
             nn.Sigmoid()
         )
 
