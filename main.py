@@ -28,7 +28,7 @@ from IPython.display import HTML
 
 # ------------------------------- INIT --------------------------
 cc = C()
-path = 'DATASET/training_main'
+path = 'DATASET/training'
 names_field = []
 names_struct = []
 names_meta = []
@@ -56,11 +56,11 @@ x_size, y_size = 250, 250
 # Number of workers for dataloader
 workers = 2
 # Batch size during training
-batch_size = 5
+batch_size = 10
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
 image_size = x_size * y_size
-# Number of output channels
+# Number of output channels in Discriminator
 nc = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100  # 100
@@ -69,7 +69,7 @@ ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 15
+num_epochs = 150
 # Learning rate for optimizers
 lr = 0.0002
 # Beta1 hyperparam for Adam optimizers
@@ -109,7 +109,7 @@ for i in range(0, len(names_struct)):
     fields_tensor[i] = field_tensor
     metas_tensor[i] = meta_tensor
 
-if show_training_set == True:
+if show_training_set:
     fig = plt.figure(figsize=(10, 4))
     grid = plt.GridSpec(100, 100, wspace=10, hspace=0.6)
     plt.title("Training | Fields | Discriminator")
@@ -193,7 +193,7 @@ def weights_init(m):
 
 
 # Create the generator
-netG = Generator(ngpu, nz, ngf, nc, x_size, y_size, batch_size).to(device)
+netG = Generator(ngpu, nz, batch_size).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -207,7 +207,7 @@ netG.apply(weights_init)
 print(netG)
 
 # Create the Discriminator
-netD = Discriminator(ngpu, ndf, nc, x_size, y_size, batch_size).to(device)
+netD = Discriminator(ngpu, nc, batch_size).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):

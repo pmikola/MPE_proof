@@ -5,13 +5,11 @@ import torch.nn as nn
 
 # Generator Code
 class Generator(nn.Module):
-    def __init__(self, ngpu, nz, ngf, nc,  batch_size):
+    def __init__(self, ngpu, nz,  batch_size):
         super(Generator, self).__init__()
         self.batch_size = batch_size
         self.nz = nz
-        self.ngf = ngf
         self.ngpu = ngpu
-        self.nc = nc
         self.main = nn.Sequential(
             nn.ConvTranspose2d(self.batch_size, self.nz, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0),
                                bias=False),
