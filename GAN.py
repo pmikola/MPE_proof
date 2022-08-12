@@ -21,9 +21,9 @@ class Generator(nn.Module):
             nn.ReLU(True),
             nn.Conv2d(self.nz * 5, int(self.nz * 2.5), kernel_size=(2, 2), stride=(2, 2), padding=(0, 0), bias=False),
             nn.BatchNorm1d(int(self.nz * 2.5)),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.ReLU(True),
             nn.Conv2d(int(self.nz * 2.5), self.batch_size, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0), bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.ReLU(True),
             nn.Tanh()
         )
 

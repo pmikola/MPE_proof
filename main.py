@@ -28,7 +28,7 @@ from IPython.display import HTML
 
 # ------------------------------- INIT --------------------------
 cc = C()
-path = 'DATASET/training'
+path = 'DATASET/training_main'
 names_field = []
 names_struct = []
 names_meta = []
@@ -43,7 +43,7 @@ generate = 0
 check_data = 0
 # nuber of the dataset to check
 check_file_dataset = 0
-# number of sims
+# number of performed simulations
 DataNum = 10
 frame_interval = 8
 dataset_size = DataNum
@@ -51,16 +51,10 @@ plot_period = 5000  # ms
 grid_size = 250  # 300
 nsteps = 750
 
-# Discriminator input and Generator output dimensions
-x_size, y_size = 250, 250
-# Number of workers for dataloader
-workers = 2
 # Batch size during training
 batch_size = 10
-# Spatial size of training images. All images will be resized to this
-#   size using a transformer.
-image_size = x_size * y_size
-# Number of output channels in Discriminator
+
+# Number of first layer output channels in Discriminator
 nc = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100  # 100
@@ -69,20 +63,20 @@ ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 150
+num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0002
-# Beta1 hyperparam for Adam optimizers
+lr = 0.0001
+# Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.5
+beta2 = 0.9
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 1
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
 show_training_set = False
-# np.random.seed(2022)
-# np.random.seed(828)
-# torch.manual_seed(2022)
+np.random.seed(2022)
+torch.manual_seed(2022)
 # ------------------------------- INIT --------------------------
 # ------------------------------- TRAIN -------------------------
 
@@ -220,12 +214,12 @@ netD.apply(weights_init)
 # Print the model
 print(netD)
 
-# Initialize BCELoss function
+# Initialize Loss function
 criterion = nn.BCELoss()
-# criterion = nn.CrossEntropyLoss()
-
+#criterion = nn.CrossEntropyLoss()
+#criterion = nn.MSELoss()
+#criterion = nn.HingeEmbeddingLoss()
 # Create batch of latent vectors that we will use to visualize
-#  the progression of the generator #64
 fixed_noise = torch.randn(batch_size, nz, nz, device=device)
 
 # Establish convention for real and fake labels during training
@@ -233,9 +227,10 @@ real_label = 1.
 fake_label = 0.
 
 # Setup Adam optimizers for both G and D
-optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
-
+optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2))
+optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2))
+# optimizerD = optim.SGD(netD.parameters(), lr=0.01, momentum=0.9)
+# optimizerG = optim.SGD(netG.parameters(), lr=0.01, momentum=0.9)
 ############### Training Loop
 
 # Lists to keep track of progress
@@ -262,8 +257,8 @@ for epoch in range(num_epochs):
         netD.zero_grad()
         # Format batch
         # real = torch.tensor(data[batch_idx].unsqueeze(dim=2))
-        # real = torch.tensor(data[0])
-        real = data[0].clone().detach().requires_grad_(True).to(device)
+        real = data[0].to(device)
+        #real = data[0].clone().detach().requires_grad_(True).to(device)
         # real = real.view(-1, x_size * y_size).to(device)
 
         b_size = real.shape[0]
@@ -335,9 +330,9 @@ for epoch in range(num_epochs):
         optimizerG.step()
 
         # Output training stats
-        if i % 5 == 0:
+        if batch_idx % 10 == 0:
             print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                  % (epoch, num_epochs, i, len(dataloader_structures),
+                  % (epoch, num_epochs, batch_idx, len(dataloader_structures),
                      errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
         # Save Losses for plotting later
@@ -345,7 +340,7 @@ for epoch in range(num_epochs):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader_structures) - 1)):
+        if (iters % 500 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
             with torch.no_grad():
                 fake = netG(fixed_noise).detach().cpu()
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
