@@ -5,19 +5,14 @@ import torch.nn as nn
 
 # Generator Code
 class Generator(nn.Module):
-    def __init__(self, ngpu, nz, ngf, nc, x_size, y_size, batch_size):
+    def __init__(self, ngpu, nz, ngf, nc,  batch_size):
         super(Generator, self).__init__()
-        self.y_size = y_size
-        self.x_size = x_size
         self.batch_size = batch_size
         self.nz = nz
         self.ngf = ngf
         self.ngpu = ngpu
         self.nc = nc
-        # self.structure = structure
-        # self.meta = meta
         self.main = nn.Sequential(
-            # input is Z, going into a convolution
             nn.ConvTranspose2d(self.batch_size, self.nz, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0),
                                bias=False),
             nn.BatchNorm1d(self.nz),
@@ -40,18 +35,12 @@ class Generator(nn.Module):
 
 # Discriminator Code
 class Discriminator(nn.Module):
-    def __init__(self, ngpu, ndf, nc, x_size, y_size, batch_size):
+    def __init__(self, ngpu, nc, batch_size):
         super(Discriminator, self).__init__()
         self.batch_size = batch_size
         self.ngpu = ngpu
-        self.ndf = ndf
         self.nc = nc
-        self.x_size = x_size
-        self.y_size = y_size
-        # self.fields = fields
         self.main = nn.Sequential(
-            # input is (nc) x x_size x y_size nn.Conv2d(in_channels=self.nc,  out_channels=self.nc, kernel_size=(
-            # self.x_size, self.y_size), stride=1, padding=0),
             nn.Conv2d(self.batch_size, self.nc, kernel_size=(1, 1), stride=(2, 2), padding=(1, 1), bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(self.nc, self.nc * 2, kernel_size=(2, 2), stride=(2, 2), padding=(1, 1), bias=False),
