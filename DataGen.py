@@ -58,11 +58,11 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
         x_pair = Generated_Structure[0][i]
         y_pair = Generated_Structure[1][i]
         if x_pair > grid_size - 1 or y_pair > grid_size - 1:
-            print(x_pair, y_pair)
+            #print(x_pair, y_pair)
             pass
         else:
             Gen_Structure[int(x_pair)][int(y_pair)] = 1.
-    Gen_Structure[pulse_loc_x][pulse_loc_y] = 2.
+    #Gen_Structure[pulse_loc_x][pulse_loc_y] = 2. # for later purpose
     #     # print([int(x_pair), int(y_pair)])
     #     # print(Gen_Structure[int(x_pair)][int(y_pair)])
     #     # print(Gen_Structure[int(x_pair)][:])
