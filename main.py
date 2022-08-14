@@ -43,11 +43,13 @@ nsteps = 2
 
 # Datasize of the training dataset
 data_size = 500
-#number of trained dataset loading laps
+# number of trained dataset loading laps
 laps = 1
 # Batch size during training
 batch_size = 10
 
+# Displaying progress of the traing - modes of fake generator images + loss plots
+disp_progrss = 0
 # Number of first layer output channels in Discriminator
 nc = 1
 # Size of z latent vector (i.e. size of generator input)
@@ -57,7 +59,7 @@ ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 25
+num_epochs = 50
 # Learning rate for optimizers
 lr = 0.0001
 # Beta1 and beta2 hyperparam for Adam optimizers
@@ -69,6 +71,9 @@ ngpu = 1
 shape_stat = 0
 # Showing samples from training set
 show_training_set = False
+# deleting the models
+delate_models = False
+# Seed
 np.random.seed(2022)
 torch.manual_seed(2022)
 
@@ -86,7 +91,8 @@ def img_fields(axes, fields_tensor, metas_tensor, grid_size, i):
 
 # ------------------------------- FUNC --------------------------
 # ------------------------------- TRAIN -------------------------
-for lap_counter in range(0,laps):
+for lap_counter in range(0, laps):
+    print('LAP number : ', lap_counter)
     Generate(DataNum, frame_interval, plot_period, grid_size, plot_flag, show_structure, save_flag, check_data, nsteps,
              names_struct, names_field, names_meta, path, check_file_dataset, generate)
 
@@ -99,8 +105,9 @@ for lap_counter in range(0,laps):
     metas_tensor = torch.empty((len(names_meta), 14))
 
     # time.sleep(100)
-    for i in range(data_size*lap_counter, data_size*(lap_counter+1)):
-        Loaded_Structure, Loaded_Field, Loaded_Meta = DataGen.Loader(i, names_struct, names_field, names_meta, path)
+    for i in range(0, data_size):
+        Loaded_Structure, Loaded_Field, Loaded_Meta = DataGen.Loader((data_size * lap_counter) + i, names_struct,
+                                                                     names_field, names_meta, path)
         # Loaded_Structure, _, _ = DataGen.Loader(i, names_struct, names_field, names_meta, path)
         structure_tensor = torch.from_numpy(Loaded_Structure)
         field_tensor = torch.from_numpy(Loaded_Field)
@@ -206,13 +213,22 @@ for lap_counter in range(0,laps):
     if (device.type == 'cuda') and (ngpu > 1):
         netG = nn.DataParallel(netG, list(range(ngpu)))
 
-    # if os.path.exists(pathG):
-    #     netG.load_state_dict(torch.load(pathG))
-    # else:
+    if os.path.exists(pathG):
+        if delate_models:
+            os.remove(pathG)
+        else:
+            pass
+        try:
+            netG.load_state_dict(torch.load(pathG))
+        except:
+            # Apply the weights_init function to randomly initialize all weights
+            #  to mean=0, stdev=0.02.
+            netG.apply(weights_init)
+    else:
+        # Apply the weights_init function to randomly initialize all weights
+        #  to mean=0, stdev=0.02.
+        netG.apply(weights_init)
 
-    # Apply the weights_init function to randomly initialize all weights
-    #  to mean=0, stdev=0.02.
-    netG.apply(weights_init)
     # Print the model
     print(netG)
 
@@ -223,13 +239,21 @@ for lap_counter in range(0,laps):
     if (device.type == 'cuda') and (ngpu > 1):
         netD = nn.DataParallel(netD, list(range(ngpu)))
 
-    # if os.path.exists(pathD):
-    #     netD.load_state_dict(torch.load(pathD))
-    # else:
-
-    # Apply the weights_init function to randomly initialize all weights
-    #  to mean=0, stdev=0.2.
-    netD.apply(weights_init)
+    if os.path.exists(pathD):
+        if delate_models:
+            os.remove(pathD)
+        else:
+            pass
+        try:
+            netD.load_state_dict(torch.load(pathD))
+        except:
+            # Apply the weights_init function to randomly initialize all weights
+            #  to mean=0, stdev=0.2.
+            netD.apply(weights_init)
+    else:
+        # Apply the weights_init function to randomly initialize all weights
+        #  to mean=0, stdev=0.2.
+        netD.apply(weights_init)
 
     # Print the model
     print(netD)
@@ -396,18 +420,20 @@ for lap_counter in range(0,laps):
                 img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
             iters += 1
+    if disp_progrss == 1 or lap_counter == laps - 1:
+        ani = animation.ArtistAnimation(fig_fakes, img_fakes, interval=30, blit=True)
+        plt.show()
 
-    ani = animation.ArtistAnimation(fig_fakes, img_fakes, interval=30, blit=True)
-    plt.show()
-
-    plt.figure(figsize=(10, 5))
-    plt.title("Generator and Discriminator Loss During Training")
-    plt.plot(G_losses, label="G")
-    plt.plot(D_losses, label="D")
-    plt.xlabel("iterations")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
+        plt.figure(figsize=(10, 5))
+        plt.title("Generator and Discriminator Loss During Training")
+        plt.plot(G_losses, label="G")
+        plt.plot(D_losses, label="D")
+        plt.xlabel("iterations")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.show()
+    else:
+        pass
 
     ############## Save Model After Training ###############
     torch.save(netD.state_dict(), pathD)
