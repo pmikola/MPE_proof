@@ -2,6 +2,9 @@ from __future__ import print_function
 
 import os
 import time
+
+from torch import autograd
+
 from GAN import Generator, Discriminator
 import matplotlib.cm as cm
 import DataGen
@@ -24,6 +27,11 @@ names_field = []
 names_struct = []
 names_meta = []
 f = []
+img_list = []
+G_losses = []
+D_losses = []
+img_fakes = []
+azes = []
 plot_flag = 0
 show_structure = 0
 # save the generated data to files
@@ -42,11 +50,11 @@ grid_size = 250  # 300
 nsteps = 2
 
 # Datasize of the training dataset
-data_size = 500
+data_size = 1000
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 10
+batch_size = 50
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
@@ -54,17 +62,20 @@ disp_progrss = 0
 nc = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100  # 100
+# Range of the latent vector values
+r_min = -1
+r_max = 1
 # Size of feature maps in generator
 ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 50
+num_epochs = 2500
 # Learning rate for optimizers
-lr = 0.0001
+lr = 0.00005
 # Beta1 and beta2 hyperparam for Adam optimizers
-beta1 = 0.4
-beta2 = 0.4
+beta1 = 0.95
+beta2 = 0.99
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 1
 # Show shapes of Gen and Disc in and out
@@ -72,7 +83,9 @@ shape_stat = 0
 # Showing samples from training set
 show_training_set = False
 # deleting the models
-delate_models = False
+delate_models = True
+delate_G = False
+delate_D = False
 # Seed
 np.random.seed(2022)
 torch.manual_seed(2022)
@@ -89,10 +102,21 @@ def img_fields(axes, fields_tensor, metas_tensor, grid_size, i):
     return ims_fields
 
 
+# custom weights initialization called on netG and netD from random distribution with
+# mean = 0 | and stdev = 0.02
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        nn.init.normal_(m.weight.data, 1.0, 0.02)
+        nn.init.constant_(m.bias.data, 0)
+
+
 # ------------------------------- FUNC --------------------------
 # ------------------------------- TRAIN -------------------------
 for lap_counter in range(0, laps):
-    print('LAP number : ', lap_counter)
+    print('LAP number : ', lap_counter + 1)
     Generate(DataNum, frame_interval, plot_period, grid_size, plot_flag, show_structure, save_flag, check_data, nsteps,
              names_struct, names_field, names_meta, path, check_file_dataset, generate)
 
@@ -115,7 +139,6 @@ for lap_counter in range(0, laps):
         structures_tensor[i] = structure_tensor
         fields_tensor[i] = field_tensor
         metas_tensor[i] = meta_tensor
-
     if show_training_set:
         fig = plt.figure(figsize=(10, 4))
         grid = plt.GridSpec(100, 100, wspace=10, hspace=0.6)
@@ -194,18 +217,6 @@ for lap_counter in range(0, laps):
     print(torch.cuda.get_device_name(0))
     torch.cuda.empty_cache()
 
-
-    # custom weights initialization called on netG and netD from random distribution with
-    # mean = 0 | and stdev = 0.02
-    def weights_init(m):
-        classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
-            nn.init.normal_(m.weight.data, 1.0, 0.02)
-            nn.init.constant_(m.bias.data, 0)
-
-
     # Create the generator
     netG = Generator(ngpu, nz, batch_size).to(device)
 
@@ -214,7 +225,7 @@ for lap_counter in range(0, laps):
         netG = nn.DataParallel(netG, list(range(ngpu)))
 
     if os.path.exists(pathG):
-        if delate_models:
+        if delate_models or delate_G:
             os.remove(pathG)
         else:
             pass
@@ -240,8 +251,9 @@ for lap_counter in range(0, laps):
         netD = nn.DataParallel(netD, list(range(ngpu)))
 
     if os.path.exists(pathD):
-        if delate_models:
+        if delate_models or delate_D:
             os.remove(pathD)
+            delate_models = False
         else:
             pass
         try:
@@ -260,6 +272,8 @@ for lap_counter in range(0, laps):
 
     # Initialize Loss function
     criterion = nn.BCELoss()
+
+    # criterion = nn.SmoothL1Loss()
     # criterion = nn.BCEWithLogitsLoss()
     # criterion = nn.MSELoss()
     # criterion = nn.HingeEmbeddingLoss()
@@ -271,39 +285,51 @@ for lap_counter in range(0, laps):
     fake_label = 0.
 
     # Setup Adam optimizers for both G and D
-    # optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2))
-    # optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2))
+    # if lap_counter == 0:
+
+    # optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0, )
+    # optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0, )
     # optimizerD = optim.SGD(netD.parameters(), lr=lr, momentum=0.9)
     # optimizerG = optim.SGD(netG.parameters(), lr=lr, momentum=0.9)
-    optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.8, eps=1e-09, weight_decay=1e-2, momentum=0.95)
-    optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.8, eps=1e-09, weight_decay=1e-2, momentum=0.95)
+    # else:
+    optimizerG = optim.RMSprop(netG.parameters(), lr=5e-5)
+    optimizerD = optim.RMSprop(netD.parameters(), lr=5e-5)
+    # optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
+    # optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
     # optimizerD = optim.Adagrad(netD.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.1, initial_accumulator_value=0.1,
     #                            eps=1e-10)
     # optimizerG = optim.Adagrad(netG.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.15, initial_accumulator_value=0.1,
     #                            eps=1e-10)
 
-    ############### Training Loop
-
-    # Lists to keep track of progress
-    img_list = []
-    G_losses = []
-    D_losses = []
-    img_fakes = []
-    azes = []
     iters = 0
-    fig_fakes = plt.figure(figsize=(10, 4))
-    grid = plt.GridSpec(100, 100, wspace=10, hspace=0.6)
-    for i in range(0, 10):
-        if i < 5:
-            az = fig_fakes.add_subplot(grid[0:49, 20 * i:20 * i + 20])
-        else:
-            az = fig_fakes.add_subplot(grid[51:100, 20 * (i - 5):20 * (i - 5) + 20])
-        azes.append(az)
-        azes[i].axis("off")
+    if lap_counter == 0:
+        fig_fakes = plt.figure(figsize=(6, 6))
+        grid = plt.GridSpec(100, 100, wspace=0.5, hspace=0.5)
+        for i in range(0, 20):
+            if i < 5:
+                az = fig_fakes.add_subplot(grid[0:23, 20 * i:20 * i + 20])
+            if 5 <= i < 10:
+                az = fig_fakes.add_subplot(grid[25:48, 20 * (i - 5):20 * (i - 5) + 20])
+            if 10 <= i < 15:
+                az = fig_fakes.add_subplot(grid[50:73, 20 * (i - 10):20 * (i - 10) + 20])
+            if 15 <= i < 20:
+                az = fig_fakes.add_subplot(grid[75:98, 20 * (i - 15):20 * (i - 15) + 20])
+            else:
+                pass
+            azes.append(az)
+            azes[i].axis("off")
 
     print("Starting Training Loop...")
+
     # For each epoch
     for epoch in range(num_epochs):
+        if epoch % 3 == 0:
+            # netD.train(True)
+            netG.train(True)
+        else:
+            netG.train(False)
+            # netD.train(False)
+
         # For each batch in the dataloader
         for batch_idx, data in enumerate(dataloader_structures, 0):
             if shape_stat == 1:
@@ -341,7 +367,10 @@ for lap_counter in range(0, laps):
 
             ## Train with all-fake batch
             # Generate batch of latent vectors
-            noise = torch.randn(b_size, nz, nz, device=device)
+
+            # noise = torch.randn(b_size, nz, nz, device=device)
+            noise = (r_min - r_max) * torch.randn(b_size, nz, nz, device=device) + r_max
+
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
@@ -373,7 +402,9 @@ for lap_counter in range(0, laps):
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-
+            # WGAN change
+            for p in netD.parameters():
+                p.data.clamp_(-0.01, 0.01)
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
@@ -400,7 +431,7 @@ for lap_counter in range(0, laps):
             D_losses.append(errD.item())
 
             # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
+            if (iters % 10 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                 fake_learning0 = azes[0].imshow(fake[0])
@@ -413,11 +444,23 @@ for lap_counter in range(0, laps):
                 fake_learning7 = azes[7].imshow(fake[7])
                 fake_learning8 = azes[8].imshow(fake[8])
                 fake_learning9 = azes[9].imshow(fake[9])
+                fake_learning10 = azes[10].imshow(fake[20])
+                fake_learning11 = azes[11].imshow(fake[21])
+                fake_learning12 = azes[12].imshow(fake[22])
+                fake_learning13 = azes[13].imshow(fake[23])
+                fake_learning14 = azes[14].imshow(fake[24])
+                fake_learning15 = azes[15].imshow(fake[25])
+                fake_learning16 = azes[16].imshow(fake[26])
+                fake_learning17 = azes[17].imshow(fake[27])
+                fake_learning18 = azes[18].imshow(fake[28])
+                fake_learning19 = azes[19].imshow(fake[29])
                 # print(fake[0])
                 img_fakes.append(
                     [fake_learning0, fake_learning1, fake_learning2, fake_learning3, fake_learning4, fake_learning5,
-                     fake_learning6, fake_learning7, fake_learning8, fake_learning9])
-                img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+                     fake_learning6, fake_learning7, fake_learning8, fake_learning9, fake_learning10, fake_learning11,
+                     fake_learning12, fake_learning13, fake_learning14, fake_learning15,
+                     fake_learning16, fake_learning17, fake_learning18, fake_learning19])
+                # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
             iters += 1
     if disp_progrss == 1 or lap_counter == laps - 1:

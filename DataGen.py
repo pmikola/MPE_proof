@@ -35,8 +35,8 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
     # y_fig = range(0, grid_size)
 
     # ay.scatter(x, y, c='grey', s=70, alpha=0.017)
-    Generated_Structure = np.zeros((2, 1), dtype=np.float32)
-    pairs = np.zeros((2, 1), dtype=np.float32)
+    Generated_Structure = np.full((2, 1), -1, dtype=np.float32)
+    pairs = np.full((2, 1), -1, dtype=np.float32)
     # print(Generated_Structure)
     for i in range(0, len(x)):
         pairs[0] = x[i]
@@ -49,7 +49,7 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
     #
     Generated_Structure = np.unique(Generated_Structure, axis=1)
     Generated_Structure = np.delete(Generated_Structure, 0, axis=1)
-    Gen_Structure = np.zeros((grid_size, grid_size), dtype=np.float32)
+    Gen_Structure = np.full((grid_size, grid_size), -1, dtype=np.float32)
     # print(Generated_Structure[0][:])
 
     # print(Generated_Structure[0].shape)
@@ -58,11 +58,12 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
         x_pair = Generated_Structure[0][i]
         y_pair = Generated_Structure[1][i]
         if x_pair > grid_size - 1 or y_pair > grid_size - 1:
-            #print(x_pair, y_pair)
+            # print(x_pair, y_pair)
             pass
         else:
+            # Gen_Structure[int(x_pair)][int(y_pair)] = 1.
             Gen_Structure[int(x_pair)][int(y_pair)] = 1.
-    #Gen_Structure[pulse_loc_x][pulse_loc_y] = 2. # for later purpose
+    # Gen_Structure[pulse_loc_x][pulse_loc_y] = 2. # for later purpose
     #     # print([int(x_pair), int(y_pair)])
     #     # print(Gen_Structure[int(x_pair)][int(y_pair)])
     #     # print(Gen_Structure[int(x_pair)][:])
@@ -152,7 +153,7 @@ def Generate(DataNum, frame_interval, plot_period, grid_size, plot_flag, show_st
     for i in range(0, DataNum):
         if generate == 1:
             num_of_structures = 0
-            particle_scale = np.random.uniform(0,2)  # 0 = lambda, 1 = lambda/10, else = lambda*10
+            particle_scale = np.random.uniform(0, 2)  # 0 = lambda, 1 = lambda/10, else = lambda*10
             if particle_scale == 0:
                 num_of_structures = np.random.randint(1, 20)
             elif particle_scale == 1:
