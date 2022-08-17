@@ -30,7 +30,8 @@ f = []
 img_list = []
 G_losses = []
 D_losses = []
-img_fakes = []
+y_top = 0.
+img = []
 azes = []
 plot_flag = 0
 show_structure = 0
@@ -50,7 +51,7 @@ grid_size = 250  # 300
 nsteps = 2
 
 # Datasize of the training dataset
-data_size = 1000
+data_size = 500
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
@@ -70,9 +71,9 @@ ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 2500
+num_epochs = 100
 # Learning rate for optimizers
-lr = 0.00005
+lr = 0.0005
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.95
 beta2 = 0.99
@@ -272,12 +273,13 @@ for lap_counter in range(0, laps):
 
     # Initialize Loss function
     criterion = nn.BCELoss()
-
+    # criterion = nn.NLLLoss()
     # criterion = nn.SmoothL1Loss()
     # criterion = nn.BCEWithLogitsLoss()
     # criterion = nn.MSELoss()
     # criterion = nn.HingeEmbeddingLoss()
     # Create batch of latent vectors that we will use to visualize
+    #fixed_noise = torch.randn(batch_size, nz, nz, device=device)
     fixed_noise = torch.randn(batch_size, nz, nz, device=device)
 
     # Establish convention for real and fake labels during training
@@ -292,38 +294,40 @@ for lap_counter in range(0, laps):
     # optimizerD = optim.SGD(netD.parameters(), lr=lr, momentum=0.9)
     # optimizerG = optim.SGD(netG.parameters(), lr=lr, momentum=0.9)
     # else:
-    optimizerG = optim.RMSprop(netG.parameters(), lr=5e-5)
-    optimizerD = optim.RMSprop(netD.parameters(), lr=5e-5)
-    # optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
-    # optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
-    # optimizerD = optim.Adagrad(netD.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.1, initial_accumulator_value=0.1,
-    #                            eps=1e-10)
-    # optimizerG = optim.Adagrad(netG.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.15, initial_accumulator_value=0.1,
-    #                            eps=1e-10)
+    # optimizerG = optim.RMSprop(netG.parameters(), lr=5e-5)
+    # optimizerD = optim.RMSprop(netD.parameters(), lr=5e-5)
+    optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
+    optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=0.95)
+    # optimizerD = optim.Adagrad(netD.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.1,
+    # initial_accumulator_value=0.1, eps=1e-10) optimizerG = optim.Adagrad(netG.parameters(), lr=lr, lr_decay=0.1,
+    # weight_decay=0.15, initial_accumulator_value=0.1, eps=1e-10)
 
     iters = 0
     if lap_counter == 0:
-        fig_fakes = plt.figure(figsize=(6, 6))
+        fakes_loss_modes = plt.figure(figsize=(18, 6))
         grid = plt.GridSpec(100, 100, wspace=0.5, hspace=0.5)
         for i in range(0, 20):
             if i < 5:
-                az = fig_fakes.add_subplot(grid[0:23, 20 * i:20 * i + 20])
+                az = fakes_loss_modes.add_subplot(grid[0:23, 10 * i:10 * i + 10])
             if 5 <= i < 10:
-                az = fig_fakes.add_subplot(grid[25:48, 20 * (i - 5):20 * (i - 5) + 20])
+                az = fakes_loss_modes.add_subplot(grid[25:48, 10 * (i - 5):10 * (i - 5) + 10])
             if 10 <= i < 15:
-                az = fig_fakes.add_subplot(grid[50:73, 20 * (i - 10):20 * (i - 10) + 20])
+                az = fakes_loss_modes.add_subplot(grid[50:73, 10 * (i - 10):10 * (i - 10) + 10])
             if 15 <= i < 20:
-                az = fig_fakes.add_subplot(grid[75:98, 20 * (i - 15):20 * (i - 15) + 20])
+                az = fakes_loss_modes.add_subplot(grid[75:98, 10 * (i - 15):10 * (i - 15) + 10])
             else:
                 pass
             azes.append(az)
             azes[i].axis("off")
-
+        az = fakes_loss_modes.add_subplot(grid[0:45, 55:100])
+        azes.append(az)
+        az = fakes_loss_modes.add_subplot(grid[55:100, 55:100])
+        azes.append(az)
     print("Starting Training Loop...")
 
     # For each epoch
     for epoch in range(num_epochs):
-        if epoch % 3 == 0:
+        if epoch % 5 == 0:
             # netD.train(True)
             netG.train(True)
         else:
@@ -369,8 +373,8 @@ for lap_counter in range(0, laps):
             # Generate batch of latent vectors
 
             # noise = torch.randn(b_size, nz, nz, device=device)
-            noise = (r_min - r_max) * torch.randn(b_size, nz, nz, device=device) + r_max
-
+            # noise = (r_min - r_max) * torch.randn(b_size, nz, nz, device=device) + r_max
+            noise = torch.rand(b_size, nz, nz, device=device)
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
@@ -414,6 +418,7 @@ for lap_counter in range(0, laps):
             output = netD(fake).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(output, label)
+
             # Calculate gradients for G
             errG.backward()
             D_G_z2 = output.mean().item()
@@ -421,7 +426,7 @@ for lap_counter in range(0, laps):
             optimizerG.step()
 
             # Output training stats
-            if batch_idx % 10 == 0:
+            if batch_idx % 5 == 0:
                 print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
                       % (epoch, num_epochs, batch_idx, len(dataloader_structures),
                          errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
@@ -431,7 +436,7 @@ for lap_counter in range(0, laps):
             D_losses.append(errD.item())
 
             # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 10 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
+            if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                 fake_learning0 = azes[0].imshow(fake[0])
@@ -454,27 +459,50 @@ for lap_counter in range(0, laps):
                 fake_learning17 = azes[17].imshow(fake[27])
                 fake_learning18 = azes[18].imshow(fake[28])
                 fake_learning19 = azes[19].imshow(fake[29])
-                # print(fake[0])
-                img_fakes.append(
+                loss_G, = azes[20].plot(G_losses, color="blue")
+                loss_D, = azes[20].plot(D_losses, color="red")
+                azes[20].set_title("Generator and Discriminator Loss During Training")
+                azes[20].set_xlabel("iterations")
+                azes[20].set_ylabel("Loss")
+
+                if y_top == 0 and max(G_losses) > max(D_losses):
+                    y_top = max(G_losses)
+                elif y_top == 0 and max(G_losses) < max(D_losses):
+                    y_top = max(D_losses)
+                else:
+                    pass
+
+                azes[20].text(num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
+                              y_top - y_top / 15, 'G', color="blue", fontsize=15.)
+                azes[20].text(num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
+                              y_top - 2*(y_top / 15), 'D', color="red",
+                              fontsize=15.)
+
+                modes = azes[21].scatter(fake[:, 0],
+                                 fake[:, 1],
+                                 edgecolor='red', facecolor='None', s=5, alpha=1,
+                                 linewidth=1, label='GAN')
+                img.append(
                     [fake_learning0, fake_learning1, fake_learning2, fake_learning3, fake_learning4, fake_learning5,
                      fake_learning6, fake_learning7, fake_learning8, fake_learning9, fake_learning10, fake_learning11,
                      fake_learning12, fake_learning13, fake_learning14, fake_learning15,
-                     fake_learning16, fake_learning17, fake_learning18, fake_learning19])
+                     fake_learning16, fake_learning17, fake_learning18, fake_learning19, loss_G, loss_D,modes])
                 # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
             iters += 1
     if disp_progrss == 1 or lap_counter == laps - 1:
-        ani = animation.ArtistAnimation(fig_fakes, img_fakes, interval=30, blit=True)
+        ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
+
         plt.show()
 
-        plt.figure(figsize=(10, 5))
-        plt.title("Generator and Discriminator Loss During Training")
-        plt.plot(G_losses, label="G")
-        plt.plot(D_losses, label="D")
-        plt.xlabel("iterations")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.show()
+        # plt.figure(figsize=(10, 5))
+        # plt.title("Generator and Discriminator Loss During Training")
+        # plt.plot(G_losses, label="G")
+        # plt.plot(D_losses, label="D")
+        # plt.xlabel("iterations")
+        # plt.ylabel("Loss")
+        # plt.legend()
+        # plt.show()
     else:
         pass
 

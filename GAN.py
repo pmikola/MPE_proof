@@ -46,6 +46,7 @@ class Generator(nn.Module):
             nn.Conv2d(self.batch_size, self.nz, kernel_size=(5, 5), stride=(self.nz, self.nz), padding=(1, 1),
                       bias=False),
             # nn.Softsign(),
+            #nn.LeakyReLU(LRelU_slope, inplace=True),
             nn.ConvTranspose2d(self.nz, int(self.nz / 100), kernel_size=(int(self.nz / 10), int(self.nz / 10)),
                                stride=(1, 1), padding=(0, 0),
                                bias=False),
@@ -82,8 +83,12 @@ class Generator(nn.Module):
             # nn.BatchNorm1d(250),
             nn.Softsign(),
             # nn.Threshold(0, 0),
-            # nn.Hardtanh(0, 1),
+            # nn.Hardtanh(0, 1)
+            # nn.LazyLinear(250, bias=False),
             # nn.ReLU(),
+
+
+
         )
 
     def forward(self, input):
@@ -121,7 +126,8 @@ class Discriminator(nn.Module):
             nn.Conv2d(self.nc * 64, self.batch_size, kernel_size=(2, 2), stride=(2, 2), padding=(1, 1), bias=False),
             # nn.Sigmoid(),
             # WGAN change
-            nn.ReLU(),
+            #nn.ReLU(),
+            nn.Hardtanh(0, 1),
             # nn.LazyLinear(1),
             # nn.ReLU(),
         )
