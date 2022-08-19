@@ -19,6 +19,13 @@ from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 
 # ------------------------------- INIT --------------------------
+
+# Number of GPUs available. Use 0 for CPU mode.
+ngpu = 1
+device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+print(torch.cuda.get_device_name(0))
+torch.cuda.empty_cache()
+
 cc = C()
 path = 'DATASET/training_main'
 pathD = 'Models/Dnn/Discriminator.pth'
@@ -64,14 +71,15 @@ nc = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100  # 100
 # Range of the latent vector values
-r_min = -2
-r_max = 2
+r_max = 1
+r_min = -r_max
+
 # Size of feature maps in generator
 ngf = 250
 # Size of feature maps in discriminator
 ndf = 250
 # Number of training epochs
-num_epochs = 100
+num_epochs = 10
 # Learning rate for optimizers
 lr = 0.0004
 # Beta1 and beta2 hyperparam for Adam optimizers
@@ -82,8 +90,6 @@ momentumG = 0.95
 momentumD = 0.95
 # Weight clipping values (1 means no clipping)
 clip = 0.01
-# Number of GPUs available. Use 0 for CPU mode.
-ngpu = 1
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
@@ -95,6 +101,33 @@ delate_D = False
 # Seed
 np.random.seed(2022)
 torch.manual_seed(2022)
+
+DB = np.empty((2500, 250, 250))
+Unique_check = np.empty(2500)
+DecisionSpace = np.empty((50, 50))
+DB_index = 0
+for i in range(1, batch_size + 1):
+    for j in range(1, batch_size + 1):
+        ai = r_min + abs(r_min) * i / 250
+        bi = r_max - r_max + r_max * i / 250
+        aj = r_min + abs(r_min) * j / 250
+        bj = r_max - r_max + r_max * j / 250
+        x = np.linspace(ai, bi, 250)
+        y = np.linspace(aj, bj, 250)
+        #X, Y = np.meshgrid(x, y)
+        # X = np.divide(X, r_max)
+        # Y = np.divide(y, r_max)
+        # time.sleep(1
+        XY = np.multiply(x, y)
+        DB[DB_index] = XY
+        # print(np.sum(np.array(DB[DB_index])))
+        # print('----------------\n----------------')
+        # time.sleep(1)
+        DB_index += 1
+
+
+DB_index = 0
+test_data = torch.empty((50, 250, 250), device=device)
 
 
 # ------------------------------- INIT --------------------------
@@ -117,6 +150,7 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
+
 
 # ------------------------------- FUNC --------------------------
 # ------------------------------- TRAIN -------------------------
@@ -217,10 +251,6 @@ for lap_counter in range(0, laps):
                                                         shuffle=True)
     dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
                                                    shuffle=True)
-    device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-
-    print(torch.cuda.get_device_name(0))
-    torch.cuda.empty_cache()
 
     # Create the generator
     netG = Generator(ngpu, nz, batch_size).to(device)
@@ -277,7 +307,7 @@ for lap_counter in range(0, laps):
 
     # Initialize Loss function
     criterion = nn.BCELoss()
-    # Fixed noise visoalisation
+    # Fixed noise visualisation check
     fixed_noise = torch.randn(batch_size, nz, nz, device=device)
 
     # Establish convention for real and fake labels during training
@@ -301,15 +331,15 @@ for lap_counter in range(0, laps):
     if lap_counter == 0:
         fakes_loss_modes = plt.figure(figsize=(18, 8))
         grid = plt.GridSpec(100, 100, wspace=0.5, hspace=0.5)
-        for i in range(0, 20):
+        for i in range(0, 10):
             if i < 5:
                 az = fakes_loss_modes.add_subplot(grid[0:23, 10 * i:10 * i + 10])
             if 5 <= i < 10:
                 az = fakes_loss_modes.add_subplot(grid[25:48, 10 * (i - 5):10 * (i - 5) + 10])
-            if 10 <= i < 15:
-                az = fakes_loss_modes.add_subplot(grid[50:73, 10 * (i - 10):10 * (i - 10) + 10])
-            if 15 <= i < 20:
-                az = fakes_loss_modes.add_subplot(grid[75:98, 10 * (i - 15):10 * (i - 15) + 10])
+            # if 10 <= i < 15:
+            #     az = fakes_loss_modes.add_subplot(grid[50:73, 10 * (i - 10):10 * (i - 10) + 10])
+            # if 15 <= i < 20:
+            #     az = fakes_loss_modes.add_subplot(grid[75:98, 10 * (i - 15):10 * (i - 15) + 10])
             else:
                 pass
             azes.append(az)
@@ -317,6 +347,8 @@ for lap_counter in range(0, laps):
         az = fakes_loss_modes.add_subplot(grid[0:45, 55:100])
         azes.append(az)
         az = fakes_loss_modes.add_subplot(grid[55:100, 55:100])
+        azes.append(az)
+        az = fakes_loss_modes.add_subplot(grid[55:100, 0:50])
         azes.append(az)
     print("Starting Training Loop...")
 
@@ -369,8 +401,8 @@ for lap_counter in range(0, laps):
             # Generate batch of latent vectors
 
             # noise = torch.randn(b_size, nz, nz, device=device)
-            # noise = (r_min - r_max) * torch.randn(b_size, nz, nz, device=device) + r_max
-            noise = torch.rand(b_size, nz, nz, device=device)
+            noise = (r_min - r_max) * torch.randn(batch_size, nz, nz, device=device) + r_max
+            # noise = torch.rand(b_size, nz, nz, device=device)
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
@@ -403,7 +435,7 @@ for lap_counter in range(0, laps):
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 pass
             else:
                 # WGAN change
@@ -441,31 +473,22 @@ for lap_counter in range(0, laps):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                     # fake = fake.detach().cpu()
-                    fake_learning0 = azes[0].imshow(fake[0])
-                    fake_learning1 = azes[1].imshow(fake[1])
-                    fake_learning2 = azes[2].imshow(fake[2])
-                    fake_learning3 = azes[3].imshow(fake[3])
-                    fake_learning4 = azes[4].imshow(fake[4])
-                    fake_learning5 = azes[5].imshow(fake[5])
-                    fake_learning6 = azes[6].imshow(fake[6])
-                    fake_learning7 = azes[7].imshow(fake[7])
-                    fake_learning8 = azes[8].imshow(fake[8])
-                    fake_learning9 = azes[9].imshow(fake[9])
-                    fake_learning10 = azes[10].imshow(fake[10])
-                    fake_learning11 = azes[11].imshow(fake[11])
-                    fake_learning12 = azes[12].imshow(fake[12])
-                    fake_learning13 = azes[13].imshow(fake[13])
-                    fake_learning14 = azes[14].imshow(fake[14])
-                    fake_learning15 = azes[15].imshow(fake[15])
-                    fake_learning16 = azes[16].imshow(fake[16])
-                    fake_learning17 = azes[17].imshow(fake[17])
-                    fake_learning18 = azes[18].imshow(fake[18])
-                    fake_learning19 = azes[19].imshow(fake[19])
-                    loss_G, = azes[20].plot(G_losses, color="blue")
-                    loss_D, = azes[20].plot(D_losses, color="red")
-                    azes[20].set_title("Generator and Discriminator Loss During Training")
-                    azes[20].set_xlabel("iterations")
-                    azes[20].set_ylabel("Loss")
+                    ccmap = cm.viridis
+                    fake_learning0 = azes[0].imshow(fake[0],cmap=ccmap)
+                    fake_learning1 = azes[1].imshow(fake[1],cmap=ccmap)
+                    fake_learning2 = azes[2].imshow(fake[2],cmap=ccmap)
+                    fake_learning3 = azes[3].imshow(fake[3],cmap=ccmap)
+                    fake_learning4 = azes[4].imshow(fake[4],cmap=ccmap)
+                    fake_learning5 = azes[5].imshow(fake[5],cmap=ccmap)
+                    fake_learning6 = azes[6].imshow(fake[6],cmap=ccmap)
+                    fake_learning7 = azes[7].imshow(fake[7],cmap=ccmap)
+                    fake_learning8 = azes[8].imshow(fake[8],cmap=ccmap)
+                    fake_learning9 = azes[9].imshow(fake[9],cmap=ccmap)
+                    loss_G, = azes[10].plot(G_losses, color="blue")
+                    loss_D, = azes[10].plot(D_losses, color="red")
+                    azes[10].set_title("Generator and Discriminator Loss During Training")
+                    azes[10].set_xlabel("iterations")
+                    azes[10].set_ylabel("Loss")
 
                     if y_top == 0 and max(G_losses) > max(D_losses):
                         y_top = max(G_losses)
@@ -474,36 +497,50 @@ for lap_counter in range(0, laps):
                     else:
                         pass
 
-                    azes[20].text(
+                    azes[10].text(
                         num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
                         y_top - y_top / 10, 'G', color="blue", fontsize=15.)
-                    azes[20].text(
+                    azes[10].text(
                         num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
                         y_top - 2 * (y_top / 10), 'D', color="red",
                         fontsize=15.)
 
-                    modesF = azes[21].scatter(fake[:, 0],
+                    modesF = azes[11].scatter(fake[:, 0],
                                               fake[:, 1],
                                               edgecolor='red', facecolor='None', s=5, alpha=1,
                                               linewidth=1, label='GAN')
-                    modesR = azes[21].scatter(real[:, 0].cpu(),
+                    modesR = azes[11].scatter(real[:, 0].cpu(),
                                               real[:, 1].cpu(),
                                               edgecolor='blue', facecolor='None', s=5, alpha=1,
                                               linewidth=1, label='Real')
-                    azes[21].set_title("MODES | Real - blue | Fake - Red")
+                    azes[11].set_title("MODES | Real - blue | Fake - Red")
+                    test_data_index = 0
+                    for i in range(1, batch_size + 1):
+
+                        test_data[test_data_index] = torch.tensor(torch.from_numpy(np.array(DB[DB_index])),
+                                                                  device=device,
+                                                                  dtype=torch.float)
+                        test_data_index += 1
+                        DS = np.squeeze(netD(test_data).detach().cpu().numpy(), axis=None)
+                        #print(DS.shape)
+                        #time.sleep(2)
+                        DecisionSpace[i - 1] = DS
+                        DB_index += 1
+                    # print(decisionBoundry_Discriminator)
+                    # time.sleep(2)
+                    boundD = azes[12].imshow(DecisionSpace,cmap=cm.seismic)
+
                     img.append(
                         [fake_learning0, fake_learning1, fake_learning2, fake_learning3, fake_learning4, fake_learning5,
-                         fake_learning6, fake_learning7, fake_learning8, fake_learning9, fake_learning10,
-                         fake_learning11,
-                         fake_learning12, fake_learning13, fake_learning14, fake_learning15,
-                         fake_learning16, fake_learning17, fake_learning18, fake_learning19, loss_G, loss_D, modesF,
-                         modesR])
+                         fake_learning6, fake_learning7, fake_learning8, fake_learning9, loss_G, loss_D, modesF,
+                         modesR, boundD])
                     # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
-
             iters += 1
     if disp_progrss == 1 or lap_counter == laps - 1:
         ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
         plt.show()
+        # ani.save('../retardGAN1.gif', writer='pillow', fps=25, dpi=100)
+
     else:
         pass
     ############## Save Model After Training ###############
