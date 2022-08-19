@@ -17,6 +17,7 @@ import torchvision.utils as vutils
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
+import torch.nn.functional as F
 
 # ------------------------------- INIT --------------------------
 
@@ -66,27 +67,27 @@ batch_size = 50
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
-# Number of first layer output channels in Discriminator
-nc = 1
+# Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
+num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
 nz = 100  # 100
 # Range of the latent vector values
-r_max = 1
+r_max = 2
 r_min = -r_max
 
 # Size of feature maps in generator
-ngf = 250
+features_generator = batch_size
 # Size of feature maps in discriminator
-ndf = 250
+features_discriminator = batch_size
 # Number of training epochs
-num_epochs = 10
+num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0004
+lr = 0.0002
 # Beta1 and beta2 hyperparam for Adam optimizers
-beta1 = 0.95
+beta1 = 0.5
 beta2 = 0.99
 # momentum for RMSprop optimizers
-momentumG = 0.95
+momentumG = 0.99
 momentumD = 0.95
 # Weight clipping values (1 means no clipping)
 clip = 0.01
@@ -114,7 +115,7 @@ for i in range(1, batch_size + 1):
         bj = r_max - r_max + r_max * j / 250
         x = np.linspace(ai, bi, 250)
         y = np.linspace(aj, bj, 250)
-        #X, Y = np.meshgrid(x, y)
+        # X, Y = np.meshgrid(x, y)
         # X = np.divide(X, r_max)
         # Y = np.divide(y, r_max)
         # time.sleep(1
@@ -124,7 +125,6 @@ for i in range(1, batch_size + 1):
         # print('----------------\n----------------')
         # time.sleep(1)
         DB_index += 1
-
 
 DB_index = 0
 test_data = torch.empty((50, 250, 250), device=device)
@@ -151,7 +151,8 @@ def weights_init(m):
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
-
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 # ------------------------------- FUNC --------------------------
 # ------------------------------- TRAIN -------------------------
 for lap_counter in range(0, laps):
@@ -253,8 +254,9 @@ for lap_counter in range(0, laps):
                                                    shuffle=True)
 
     # Create the generator
-    netG = Generator(ngpu, nz, batch_size).to(device)
-
+    netG = Generator(ngpu,nz, num_of_chanells,features_generator).to(device)
+    print(count_parameters(netG))
+    time.sleep(1)
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
         netG = nn.DataParallel(netG, list(range(ngpu)))
@@ -279,8 +281,9 @@ for lap_counter in range(0, laps):
     print(netG)
 
     # Create the Discriminator
-    netD = Discriminator(ngpu, nc, batch_size).to(device)
-
+    netD = Discriminator(ngpu, num_of_chanells,features_discriminator).to(device)
+    print(count_parameters(netD))
+    time.sleep(1)
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
         netD = nn.DataParallel(netD, list(range(ngpu)))
@@ -308,24 +311,15 @@ for lap_counter in range(0, laps):
     # Initialize Loss function
     criterion = nn.BCELoss()
     # Fixed noise visualisation check
-    fixed_noise = torch.randn(batch_size, nz, nz, device=device)
-
+    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (50, 100, 1, 1)).to(device)
     # Establish convention for real and fake labels during training
     real_label = 1.
     fake_label = 0.
 
     # optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0 )
     # optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0 )
-    # optimizerD = optim.SGD(netD.parameters(), lr=lr, momentum=0.9)
-    # optimizerG = optim.SGD(netG.parameters(), lr=lr, momentum=0.9)
-    # else:
-    # optimizerG = optim.RMSprop(netG.parameters(), lr=5e-5)
-    # optimizerD = optim.RMSprop(netD.parameters(), lr=5e-5)
-    optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=momentumD)
-    optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-09, weight_decay=0, momentum=momentumG)
-    # optimizerD = optim.Adagrad(netD.parameters(), lr=lr, lr_decay=0.1, weight_decay=0.1,
-    # initial_accumulator_value=0.1, eps=1e-10) optimizerG = optim.Adagrad(netG.parameters(), lr=lr, lr_decay=0.1,
-    # weight_decay=0.15, initial_accumulator_value=0.1, eps=1e-10)
+    optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.7, eps=1e-09, weight_decay=0, momentum=momentumD)
+    optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.99, eps=1e-09, weight_decay=0, momentum=momentumG)
 
     iters = 0
     if lap_counter == 0:
@@ -354,12 +348,16 @@ for lap_counter in range(0, laps):
 
     # For each epoch
     for epoch in range(num_epochs):
-        if epoch % 5 == 0:
-            # netD.train(True)
-            netG.train(True)
-        else:
-            netG.train(False)
-            # netD.train(False)
+        # if  epoch > 10:
+        #     netG.train(True)
+        # else:
+        #     netG.train(False)
+        # if epoch % 5 == 0:
+        #     netD.train(True)
+        #     # netG.train(True)
+        # else:
+        #     # netG.train(False)
+        #     netD.train(False)
 
         # For each batch in the dataloader
         for batch_idx, data in enumerate(dataloader_structures, 0):
@@ -376,7 +374,7 @@ for lap_counter in range(0, laps):
             netD.zero_grad()
             # Format batch
             # real = torch.tensor(data[batch_idx].unsqueeze(dim=2))
-            real = data[0].to(device)
+            real =torch.reshape(torch.squeeze( data[0]),(batch_size,1,250,250)).to(device)
             # real = data[0].clone().detach().requires_grad_(True).to(device)
             # real = real.view(-1, x_size * y_size).to(device)
             b_size = real.shape[0]
@@ -400,15 +398,16 @@ for lap_counter in range(0, laps):
             ## Train with all-fake batch
             # Generate batch of latent vectors
 
-            # noise = torch.randn(b_size, nz, nz, device=device)
-            noise = (r_min - r_max) * torch.randn(batch_size, nz, nz, device=device) + r_max
+            noise = torch.reshape(torch.squeeze(torch.randn(b_size,nz,1)),(b_size,nz,1,1)).to(device)
+            #noise = torch.reshape((noise,(100,50,1,1)))
+            #noise = (r_min - r_max) * torch.randn(batch_size, nz, nz, device=device) + r_max
             # noise = torch.rand(b_size, nz, nz, device=device)
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
                 time.sleep(2)
             # Generate fake image batch with G
-            fake = netG(noise)
+            fake = torch.reshape(torch.squeeze( F.interpolate(netG(noise),size=250)),(b_size,1,250,250)).to(device)
             if shape_stat == 1:
                 print(fake.shape)
                 print("NetG out - fake gen\n--------------------------\n")
@@ -435,12 +434,12 @@ for lap_counter in range(0, laps):
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-            if epoch % 5 == 0:
-                pass
-            else:
-                # WGAN change
-                for p in netD.parameters():
-                    p.data.clamp_(-clip, clip)
+            # if epoch % 5 == 0:
+            #     pass
+            # else:
+            #     # WGAN change
+            #     for p in netD.parameters():
+            #         p.data.clamp_(-clip, clip)
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -471,69 +470,68 @@ for lap_counter in range(0, laps):
             # Check how the generator is doing by saving G's output on fixed_noise
             if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
-                    fake = netG(fixed_noise).detach().cpu()
-                    # fake = fake.detach().cpu()
-                    ccmap = cm.viridis
-                    fake_learning0 = azes[0].imshow(fake[0],cmap=ccmap)
-                    fake_learning1 = azes[1].imshow(fake[1],cmap=ccmap)
-                    fake_learning2 = azes[2].imshow(fake[2],cmap=ccmap)
-                    fake_learning3 = azes[3].imshow(fake[3],cmap=ccmap)
-                    fake_learning4 = azes[4].imshow(fake[4],cmap=ccmap)
-                    fake_learning5 = azes[5].imshow(fake[5],cmap=ccmap)
-                    fake_learning6 = azes[6].imshow(fake[6],cmap=ccmap)
-                    fake_learning7 = azes[7].imshow(fake[7],cmap=ccmap)
-                    fake_learning8 = azes[8].imshow(fake[8],cmap=ccmap)
-                    fake_learning9 = azes[9].imshow(fake[9],cmap=ccmap)
+                    fake_interpol_img = F.interpolate(netG(fixed_noise), size=250)
+                    faket = torch.reshape(torch.squeeze(fake_interpol_img), (b_size, 250, 250)).cpu().detach().numpy()
+                    ccmap = cm.PRGn
+                    fake_learning0 = azes[0].imshow(faket[0], cmap=ccmap)
+                    fake_learning1 = azes[1].imshow(faket[1], cmap=ccmap)
+                    fake_learning2 = azes[2].imshow(faket[2], cmap=ccmap)
+                    fake_learning3 = azes[3].imshow(faket[3], cmap=ccmap)
+                    fake_learning4 = azes[4].imshow(faket[4], cmap=ccmap)
+                    fake_learning5 = azes[5].imshow(faket[5], cmap=ccmap)
+                    fake_learning6 = azes[6].imshow(faket[6], cmap=ccmap)
+                    fake_learning7 = azes[7].imshow(faket[7], cmap=ccmap)
+                    fake_learning8 = azes[8].imshow(faket[8], cmap=ccmap)
+                    fake_learning9 = azes[9].imshow(faket[9], cmap=ccmap)
                     loss_G, = azes[10].plot(G_losses, color="blue")
                     loss_D, = azes[10].plot(D_losses, color="red")
                     azes[10].set_title("Generator and Discriminator Loss During Training")
                     azes[10].set_xlabel("iterations")
                     azes[10].set_ylabel("Loss")
-
-                    if y_top == 0 and max(G_losses) > max(D_losses):
-                        y_top = max(G_losses)
-                    elif y_top == 0 and max(G_losses) < max(D_losses):
-                        y_top = max(D_losses)
-                    else:
-                        pass
-
-                    azes[10].text(
-                        num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
-                        y_top - y_top / 10, 'G', color="blue", fontsize=15.)
-                    azes[10].text(
-                        num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 15,
-                        y_top - 2 * (y_top / 10), 'D', color="red",
-                        fontsize=15.)
-
-                    modesF = azes[11].scatter(fake[:, 0],
-                                              fake[:, 1],
+                    if epoch == num_epochs - 1:
+                        if y_top == 0 and max(G_losses) > max(D_losses):
+                            y_top = max(G_losses)
+                        elif y_top == 0 and max(G_losses) < max(D_losses):
+                            y_top = max(D_losses)
+                        else:
+                            pass
+                        azes[10].text(
+                            num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 10,
+                            y_top - y_top / 2, 'G', color="blue", fontsize=15.)
+                        azes[10].text(
+                            num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 10,
+                            y_top - y_top / 4, 'D', color="red",
+                            fontsize=15.)
+                    realt = torch.reshape(real,(b_size,250,250)).cpu().detach().numpy()
+                    modesF = azes[11].scatter(faket[:, 0],
+                                              faket[:, 1],
                                               edgecolor='red', facecolor='None', s=5, alpha=1,
                                               linewidth=1, label='GAN')
-                    modesR = azes[11].scatter(real[:, 0].cpu(),
-                                              real[:, 1].cpu(),
+                    modesR = azes[11].scatter(realt[:, 0],
+                                              realt[:, 1],
                                               edgecolor='blue', facecolor='None', s=5, alpha=1,
                                               linewidth=1, label='Real')
                     azes[11].set_title("MODES | Real - blue | Fake - Red")
                     test_data_index = 0
-                    for i in range(1, batch_size + 1):
-
-                        test_data[test_data_index] = torch.tensor(torch.from_numpy(np.array(DB[DB_index])),
-                                                                  device=device,
-                                                                  dtype=torch.float)
-                        test_data_index += 1
-                        DS = np.squeeze(netD(test_data).detach().cpu().numpy(), axis=None)
-                        #print(DS.shape)
-                        #time.sleep(2)
-                        DecisionSpace[i - 1] = DS
-                        DB_index += 1
-                    # print(decisionBoundry_Discriminator)
-                    # time.sleep(2)
-                    boundD = azes[12].imshow(DecisionSpace,cmap=cm.seismic)
+                    # for i in range(1, batch_size + 1):
+                    #
+                    #     test_data[test_data_index] = torch.tensor(torch.from_numpy(np.array(DB[DB_index])),
+                    #                                               device=device,
+                    #                                               dtype=torch.float)
+                    #     test_data_index += 1
+                    #     DS = np.squeeze(netD(test_data).detach().cpu().numpy(), axis=None)
+                    #     #print(DS.shape)
+                    #     #time.sleep(2)
+                    #     DecisionSpace[i - 1] = DS
+                    #     DB_index += 1
+                    # # print(decisionBoundry_Discriminator)
+                    # # time.sleep(2)
+                    # boundD = azes[12].imshow(DecisionSpace,cmap=cm.seismic)
 
                     img.append(
                         [fake_learning0, fake_learning1, fake_learning2, fake_learning3, fake_learning4, fake_learning5,
                          fake_learning6, fake_learning7, fake_learning8, fake_learning9, loss_G, loss_D, modesF,
-                         modesR, boundD])
+                         modesR])
                     # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
             iters += 1
     if disp_progrss == 1 or lap_counter == laps - 1:
