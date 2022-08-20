@@ -27,6 +27,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else 
 print(torch.cuda.get_device_name(0))
 torch.cuda.empty_cache()
 
+# TODO : Speeding up calculationss
+# torch.backends.cudnn.benchmark = True
+# scaler = torch.cuda.amp.GradScaler()
 cc = C()
 path = 'DATASET/training_main'
 pathD = 'Models/Dnn/Discriminator.pth'
@@ -63,7 +66,7 @@ data_size = 500
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 50
+batch_size = 25
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
@@ -82,10 +85,10 @@ features_discriminator = batch_size
 # Number of training epochs
 num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0002
+lr = 0.00001
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.5
-beta2 = 0.99
+beta2 = 0.95
 # momentum for RMSprop optimizers
 momentumG = 0.99
 momentumD = 0.95
@@ -106,28 +109,28 @@ torch.manual_seed(2022)
 DB = np.empty((2500, 250, 250))
 Unique_check = np.empty(2500)
 DecisionSpace = np.empty((50, 50))
-DB_index = 0
-for i in range(1, batch_size + 1):
-    for j in range(1, batch_size + 1):
-        ai = r_min + abs(r_min) * i / 250
-        bi = r_max - r_max + r_max * i / 250
-        aj = r_min + abs(r_min) * j / 250
-        bj = r_max - r_max + r_max * j / 250
-        x = np.linspace(ai, bi, 250)
-        y = np.linspace(aj, bj, 250)
-        # X, Y = np.meshgrid(x, y)
-        # X = np.divide(X, r_max)
-        # Y = np.divide(y, r_max)
-        # time.sleep(1
-        XY = np.multiply(x, y)
-        DB[DB_index] = XY
-        # print(np.sum(np.array(DB[DB_index])))
-        # print('----------------\n----------------')
-        # time.sleep(1)
-        DB_index += 1
-
-DB_index = 0
-test_data = torch.empty((50, 250, 250), device=device)
+# DB_index = 0
+# for i in range(1, batch_size + 1):
+#     for j in range(1, batch_size + 1):
+#         ai = r_min + abs(r_min) * i / 250
+#         bi = r_max - r_max + r_max * i / 250
+#         aj = r_min + abs(r_min) * j / 250
+#         bj = r_max - r_max + r_max * j / 250
+#         x = np.linspace(ai, bi, 250)
+#         y = np.linspace(aj, bj, 250)
+#         # X, Y = np.meshgrid(x, y)
+#         # X = np.divide(X, r_max)
+#         # Y = np.divide(y, r_max)
+#         # time.sleep(1
+#         XY = np.multiply(x, y)
+#         DB[DB_index] = XY
+#         # print(np.sum(np.array(DB[DB_index])))
+#         # print('----------------\n----------------')
+#         # time.sleep(1)
+#         DB_index += 1
+#
+# DB_index = 0
+# test_data = torch.empty((50, 250, 250), device=device)
 
 
 # ------------------------------- INIT --------------------------
@@ -247,16 +250,15 @@ for lap_counter in range(0, laps):
     # time.sleep(10)
     # Create the dataloader
     dataloader_fields = torch.utils.data.DataLoader(trainset_fields, batch_size=batch_size,
-                                                    shuffle=True)
+                                                    shuffle=True,pin_memory=True)
     dataloader_structures = torch.utils.data.DataLoader(trainset_structures, batch_size=batch_size,
-                                                        shuffle=True)
+                                                        shuffle=True,pin_memory=True)
     dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
-                                                   shuffle=True)
+                                                   shuffle=True,pin_memory=True)
 
     # Create the generator
     netG = Generator(ngpu,nz, num_of_chanells,features_generator).to(device)
-    print(count_parameters(netG))
-    time.sleep(1)
+
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
         netG = nn.DataParallel(netG, list(range(ngpu)))
@@ -282,8 +284,7 @@ for lap_counter in range(0, laps):
 
     # Create the Discriminator
     netD = Discriminator(ngpu, num_of_chanells,features_discriminator).to(device)
-    print(count_parameters(netD))
-    time.sleep(1)
+
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
         netD = nn.DataParallel(netD, list(range(ngpu)))
@@ -307,11 +308,14 @@ for lap_counter in range(0, laps):
 
     # Print the model
     print(netD)
-
+    print("Number of parameters | Discriminator | ",count_parameters(netD))
+    time.sleep(2)
+    print("Number of parameters | Generator | ", count_parameters(netG))
+    time.sleep(2)
     # Initialize Loss function
     criterion = nn.BCELoss()
     # Fixed noise visualisation check
-    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (50, 100, 1, 1)).to(device)
+    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (batch_size, 100, 1, 1)).to(device)
     # Establish convention for real and fake labels during training
     real_label = 1.
     fake_label = 0.
@@ -352,12 +356,12 @@ for lap_counter in range(0, laps):
         #     netG.train(True)
         # else:
         #     netG.train(False)
-        # if epoch % 5 == 0:
-        #     netD.train(True)
-        #     # netG.train(True)
-        # else:
-        #     # netG.train(False)
-        #     netD.train(False)
+        if epoch % 5 == 0:
+            netD.train(True)
+            # netG.train(True)
+        else:
+            # netG.train(False)
+            netD.train(False)
 
         # For each batch in the dataloader
         for batch_idx, data in enumerate(dataloader_structures, 0):
@@ -371,7 +375,7 @@ for lap_counter in range(0, laps):
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
             ## Train with all-real batch
-            netD.zero_grad()
+            netD.zero_grad(set_to_none=True)
             # Format batch
             # real = torch.tensor(data[batch_idx].unsqueeze(dim=2))
             real =torch.reshape(torch.squeeze( data[0]),(batch_size,1,250,250)).to(device)
@@ -434,17 +438,17 @@ for lap_counter in range(0, laps):
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-            # if epoch % 5 == 0:
-            #     pass
-            # else:
-            #     # WGAN change
-            #     for p in netD.parameters():
-            #         p.data.clamp_(-clip, clip)
+            if epoch % 5 == 0:
+                pass
+            else:
+                # Clipping Discriminator Weight
+                for p in netD.parameters():
+                    p.data.clamp_(-clip, clip)
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
-            netG.zero_grad()
+            netG.zero_grad(set_to_none=True)
             label.fill_(real_label)  # fake labels are real for generator cost
             # Since we just updated D, perform another forward pass of all-fake batch through D
             output = netD(fake).view(-1)
@@ -513,6 +517,7 @@ for lap_counter in range(0, laps):
                                               linewidth=1, label='Real')
                     azes[11].set_title("MODES | Real - blue | Fake - Red")
                     test_data_index = 0
+                    # TODO : Create plot for Discriminator Decision Space Boundary!!!!!!!!
                     # for i in range(1, batch_size + 1):
                     #
                     #     test_data[test_data_index] = torch.tensor(torch.from_numpy(np.array(DB[DB_index])),

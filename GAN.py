@@ -15,22 +15,23 @@ class Generator(nn.Module):
         self.ngpu = ngpu
 
         self.generator = nn.Sequential(
-            self.G_Block_A(nz, features_generator*64, 1, 1, 0),
-            self.G_Block_A(features_generator * 64, features_generator * 32, 4, 4, 1),
+            self.G_Block_A(nz, features_generator*32, 1, 1, 0),
             self.G_Block_A(features_generator * 32, features_generator * 16, 4, 4, 1),
             self.G_Block_A(features_generator * 16, features_generator * 8, 4, 4, 1),
             self.G_Block_A(features_generator * 8, features_generator * 4, 4, 4, 1),
             self.G_Block_A(features_generator * 4, features_generator * 2, 4, 4, 1),
-            nn.ConvTranspose2d(features_generator * 2,num_of_chanells,4,4,1),
+            self.G_Block_A(features_generator * 2, features_generator, 4, 4, 1),
+            nn.ConvTranspose2d(features_generator ,num_of_chanells,4,4,1),
             nn.Tanh(), #[-1,1]
         )
 
     def G_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                              nn.BatchNorm2d(out_channels),
-                             nn.ReLU(),
+                             nn.Tanh(), # TODO : Modify activation function
                              )
-
+# TODO : Create Adaptivepool layers Blocks
+# TODO : Add Dropout and residuals
     def forward(self, input):
         return self.generator(input)
 
