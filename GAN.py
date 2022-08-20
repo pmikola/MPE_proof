@@ -1,5 +1,5 @@
 import torch.nn as nn
-
+import torchgan
 # DCGAN variation
 
 LRelU_slope = 0.2
@@ -28,7 +28,7 @@ class Generator(nn.Module):
     def G_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                              nn.BatchNorm2d(out_channels),
-                             nn.Tanh(), # TODO : Modify activation function
+                             nn.LeakyReLU(LRelU_slope, inplace=True), # TODO : Modify activation function
                              )
 # TODO : Create Adaptivepool layers Blocks
 # TODO : Add Dropout and residuals
@@ -54,6 +54,9 @@ class Discriminator(nn.Module):
             self.D_Block_A(self.features_discriminator * 16, self.features_discriminator * 32, 3, 3, 1),
             nn.Conv2d(self.features_discriminator * 32, 1, 1, 1, 0, bias=False),
             nn.Sigmoid(),  # Probabilities x features_discriminator
+            #nn.LeakyReLU(LRelU_slope, inplace=False), # Because of AMP we need not a BCELoss Sigmoid here
+            # torchgan.layers.MinibatchDiscrimination1d(self.features_discriminator * 4,self.features_discriminator * 4,self.features_discriminator * 4),
+
         )
 
     def D_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
