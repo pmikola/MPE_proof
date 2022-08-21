@@ -86,15 +86,15 @@ features_discriminator = batch_size
 # Number of training epochs
 num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0001
+lr = 0.00005
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.5
 beta2 = 0.95
 # momentum for RMSprop optimizers
-momentumG = 0.99
-momentumD = 0.99
+momentumG = 0.95
+momentumD = 0.95
 # Weight clipping values (1 means no clipping)
-clip = 0.01
+clip = 0.02
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
@@ -372,12 +372,12 @@ for lap_counter in range(0, laps):
                 inputs = np.array(inputs[0])
                 print(inputs.shape)
                 print("Input Batch\n--------------------------\n")
-            # # Run your training process
             ############################
-            # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+            # (1) Maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
             ## Train with all-real batch
             netD.zero_grad(set_to_none=True)
+            netG.zero_grad(set_to_none=True)
             # Format batch
             real =torch.reshape(torch.squeeze( data[0]),(batch_size,1,grid_size,grid_size)).to(device)
             # real = data[0].clone().detach().requires_grad_(True).to(device)
@@ -389,18 +389,18 @@ for lap_counter in range(0, laps):
             # output = netD(real_cpu).view(-1)
             # print(torch.cuda.memory_summary(device=None, abbreviated=False))
 
-            output = netD(real).view(-1)
+            real_output = netD(real).view(-1)
             if shape_stat == 1:
-                print(output.shape)
+                print(real_output.shape)
                 print("Out:NetD - real batch\n--------------------------\n")
                 time.sleep(2)
             # Calculate loss on all-real batch
-            errD_real = criterion(output, label)
+            errD_real = criterion(real_output, label)
             # Calculate gradients for D in backward pass
             # errD_real.backward()
             # D_x = output.mean().item()
             errD_real.backward()
-            D_x = output.mean().item()
+            D_x = real_output.mean().item()
             ## Train with all-fake batch
             # Generate batch of latent vectors
 
@@ -423,44 +423,45 @@ for lap_counter in range(0, laps):
             label.fill_(fake_label)
 
             # Classify all fake batch with D
-            output = netD(fake.detach()).view(-1)
+            fake_output = netD(fake.detach()).view(-1)
             if shape_stat == 1:
-                print(output.shape)
+                print(fake_output.shape)
                 print("NetD out - fake disc\n--------------------------\n")
                 time.sleep(2)
             # output = netD(fake.detach()).view(-1)
 
             # Calculate D's loss on the all-fake batch
-            errD_fake = criterion(output, label)
+            errD_fake = criterion(fake_output, label)
             # Calculate the gradients for this batch, accumulated (summed) with previous gradients
             errD_fake.backward()
-            D_G_z1 = output.mean().item()
+            D_G_z1 = fake_output.mean().item()
 
             # Compute error of D as sum over the fake and the real batches
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-            # if epoch % 4 == 0:
-            #     # Clipping Discriminator Weight
-            #     for p in netD.parameters():
-            #         p.data.clamp_(-clip, clip)
-            # else:
-            #     pass
+            if epoch % 5 == 0:
+                # Clipping Discriminator Weight
+                for p in netD.parameters():
+                    p.data.clamp_(-clip, clip)
+            else:
+                pass
 
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
+            netD.zero_grad(set_to_none=True)
             netG.zero_grad(set_to_none=True)
             label.fill_(real_label)  # fake labels are real for generator cost
             # Since we just updated D, perform another forward pass of all-fake batch through D
-            output = netD(fake).view(-1)
+            fake_output = netD(fake).view(-1)
             # Calculate G's loss based on this output
-            errG = criterion(output, label)
+            errG = criterion(fake_output, label)
 
             # Calculate gradients for G
             errG.backward()
-            D_G_z2 = output.mean().item()
+            D_G_z2 = fake_output.mean().item()
             # Update G
             optimizerG.step()
 

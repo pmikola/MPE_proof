@@ -1,6 +1,11 @@
+import time
+
+import numpy as np
+import torch
 import torch.nn as nn
 import torchgan
-# DCGAN variation
+import torch.nn.functional as F
+from MBDiscLayer import MinibatchDiscrimination
 
 LRelU_slope = 0.2
 
@@ -15,23 +20,24 @@ class Generator(nn.Module):
         self.ngpu = ngpu
 
         self.generator = nn.Sequential(
-            self.G_Block_A(nz, features_generator*32, 1, 1, 0),
+            self.G_Block_A(nz, features_generator * 32, 1, 1, 0),
             self.G_Block_A(features_generator * 32, features_generator * 16, 4, 4, 1),
             self.G_Block_A(features_generator * 16, features_generator * 8, 4, 4, 1),
             self.G_Block_A(features_generator * 8, features_generator * 4, 4, 4, 1),
             self.G_Block_A(features_generator * 4, features_generator * 2, 4, 4, 1),
             self.G_Block_A(features_generator * 2, features_generator, 4, 4, 1),
-            nn.ConvTranspose2d(features_generator ,num_of_chanells,4,4,1),
-            nn.Tanh(), #[-1,1]
+            nn.ConvTranspose2d(features_generator, num_of_chanells, 4, 4, 1),
+            nn.Tanh(),  # [-1,1]
         )
 
     def G_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                              nn.BatchNorm2d(out_channels),
-                             nn.LeakyReLU(LRelU_slope, inplace=True), # TODO : Modify activation function
+                             nn.LeakyReLU(LRelU_slope, inplace=True),  # TODO : Modify activation function
                              )
-# TODO : Create Adaptivepool layers Blocks
-# TODO : Add Dropout and residuals
+
+    # TODO : Create Adaptivepool layers Blocks
+    # TODO : Add Dropout and residuals
     def forward(self, input):
         return self.generator(input)
 
@@ -52,12 +58,10 @@ class Discriminator(nn.Module):
             self.D_Block_A(self.features_discriminator * 4, self.features_discriminator * 8, 4, 4, 1),
             self.D_Block_A(self.features_discriminator * 8, self.features_discriminator * 16, 4, 4, 1),
             self.D_Block_A(self.features_discriminator * 16, self.features_discriminator * 32, 3, 3, 1),
-            nn.Conv2d(self.features_discriminator * 32, 1, 1, 1, 0, bias=False),
-            nn.Sigmoid(),  # Probabilities x features_discriminator
-            #nn.LeakyReLU(LRelU_slope, inplace=False), # Because of AMP we need not a BCELoss Sigmoid here
-            # torchgan.layers.MinibatchDiscrimination1d(self.features_discriminator * 4,self.features_discriminator * 4,self.features_discriminator * 4),
-
         )
+        # Preventing of mode collapse by corelate many same data on output of sequential
+        self.mbd = MinibatchDiscrimination(self.features_discriminator * 32, self.features_discriminator * 32, 1)
+        self.c2d = nn.Conv2d(self.features_discriminator * 64, 1, 1, 1, 0, bias=False)
 
     def D_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
@@ -66,4 +70,8 @@ class Discriminator(nn.Module):
                              )
 
     def forward(self, input):
-        return self.discriminator(input)
+        a = self.discriminator(input)
+        b = self.mbd(a)
+        c = self.c2d(b)
+        x = torch.sigmoid(c)
+        return x
