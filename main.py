@@ -2,9 +2,6 @@ from __future__ import print_function
 
 import os
 import time
-
-from torch import autograd
-
 from GAN import Generator, Discriminator
 import matplotlib.cm as cm
 import DataGen
@@ -62,7 +59,7 @@ plot_period = 5000  # ms
 grid_size = 250  # 300
 nsteps = 2
 
-# Datasize of the training dataset
+# Datanumber of the training dataset
 data_size = 500
 # number of trained dataset loading laps
 laps = 1
@@ -74,7 +71,7 @@ disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
 num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 100  # 100
+nz = 200  # 100
 # Range of the latent vector values
 r_max = 1
 r_min = -r_max
@@ -84,17 +81,17 @@ features_generator = batch_size
 # Size of feature maps in discriminator
 features_discriminator = batch_size
 # Number of training epochs
-num_epochs = 50
+num_epochs = 250
 # Learning rate for optimizers
-lr = 0.00005
+lr = 0.0001
 # Beta1 and beta2 hyperparam for Adam optimizers
-beta1 = 0.5
-beta2 = 0.95
+beta1 = 0.96
+beta2 = 0.99
 # momentum for RMSprop optimizers
 momentumG = 0.95
 momentumD = 0.95
 # Weight clipping values (1 means no clipping)
-clip = 0.02
+clip = 0.01
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
@@ -107,31 +104,15 @@ delate_D = False
 np.random.seed(2022)
 torch.manual_seed(2022)
 
-DB = np.empty((2500, grid_size, grid_size))
-Unique_check = np.empty(2500)
-DecisionSpace = np.empty((50, 50))
-# DB_index = 0
-# for i in range(1, batch_size + 1):
-#     for j in range(1, batch_size + 1):
-#         ai = r_min + abs(r_min) * i / 250
-#         bi = r_max - r_max + r_max * i / 250
-#         aj = r_min + abs(r_min) * j / 250
-#         bj = r_max - r_max + r_max * j / 250
-#         x = np.linspace(ai, bi, 250)
-#         y = np.linspace(aj, bj, 250)
-#         # X, Y = np.meshgrid(x, y)
-#         # X = np.divide(X, r_max)
-#         # Y = np.divide(y, r_max)
-#         # time.sleep(1
-#         XY = np.multiply(x, y)
-#         DB[DB_index] = XY
-#         # print(np.sum(np.array(DB[DB_index])))
-#         # print('----------------\n----------------')
-#         # time.sleep(1)
-#         DB_index += 1
-#
-# DB_index = 0
-# test_data = torch.empty((50, 250, 250), device=device)
+test_data = np.zeros((batch_size, batch_size, grid_size, grid_size))
+confidences = torch.zeros((batch_size, batch_size))
+for i in range(batch_size + 1):
+    a, b, c = np.mgrid[-r_max + i * r_max / batch_size:0 + i * r_max / batch_size:(batch_size * 1j),
+              -r_max + i * r_max / batch_size:0 + i * r_max / batch_size:(grid_size * 1j),
+              -r_max + i * r_max / batch_size:0 + i * r_max / batch_size:(grid_size * 1j)]
+    # print(a)
+    test_data[i - 1] = a
+    # time.sleep(1)
 
 
 # ------------------------------- INIT --------------------------
@@ -155,8 +136,11 @@ def weights_init(m):
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 # ------------------------------- FUNC --------------------------
 # ------------------------------- TRAIN -------------------------
 for lap_counter in range(0, laps):
@@ -251,14 +235,14 @@ for lap_counter in range(0, laps):
     # time.sleep(10)
     # Create the dataloader
     dataloader_fields = torch.utils.data.DataLoader(trainset_fields, batch_size=batch_size,
-                                                    shuffle=True,pin_memory=True)
+                                                    shuffle=True, pin_memory=True)
     dataloader_structures = torch.utils.data.DataLoader(trainset_structures, batch_size=batch_size,
-                                                        shuffle=True,pin_memory=True)
+                                                        shuffle=True, pin_memory=True)
     dataloader_metas = torch.utils.data.DataLoader(trainset_metas, batch_size=batch_size,
-                                                   shuffle=True,pin_memory=True)
+                                                   shuffle=True, pin_memory=True)
 
     # Create the generator
-    netG = Generator(ngpu,nz, num_of_chanells,features_generator).to(device)
+    netG = Generator(ngpu, nz, num_of_chanells, features_generator).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -284,7 +268,7 @@ for lap_counter in range(0, laps):
     print(netG)
 
     # Create the Discriminator
-    netD = Discriminator(ngpu, num_of_chanells,features_discriminator).to(device)
+    netD = Discriminator(ngpu, num_of_chanells, features_discriminator).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -309,23 +293,24 @@ for lap_counter in range(0, laps):
 
     # Print the model
     print(netD)
-    print("Number of parameters | Discriminator | ",count_parameters(netD))
-    time.sleep(2)
+    print("Number of parameters | Discriminator | ", count_parameters(netD))
+    time.sleep(1)
     print("Number of parameters | Generator | ", count_parameters(netG))
-    time.sleep(2)
+    time.sleep(1)
     # Initialize Loss function
     criterion = nn.BCELoss()
-    #criterion = nn.BCEWithLogitsLoss()
+    # criterion = nn.BCEWithLogitsLoss()
     # Fixed noise visualisation check
-    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (batch_size, 100, 1, 1)).to(device)
+    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (batch_size, nz, 1, 1)).to(device)
     # Establish convention for real and fake labels during training
     real_label = 1.
     fake_label = 0.
     #
-    # optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0 )
-    # optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-08, weight_decay=0 )
-    optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.7, eps=1e-09, weight_decay=0, momentum=momentumD)
-    optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.99, eps=1e-09, weight_decay=0, momentum=momentumG)
+    optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-09, weight_decay=0, amsgrad=True)
+    optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-09, weight_decay=0,
+                            amsgrad=True)
+    # optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-08, weight_decay=0, momentum=momentumD)
+    # optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-08, weight_decay=0, momentum=momentumG)
 
     iters = 0
     if lap_counter == 0:
@@ -350,19 +335,17 @@ for lap_counter in range(0, laps):
         azes.append(az)
         az = fakes_loss_modes.add_subplot(grid[55:100, 0:50])
         azes.append(az)
+        azes[12].axis("off")
+        azes[12].set_title("Discriminator Boundary")
     print("Starting Training Loop...")
 
     # For each epoch
     for epoch in range(num_epochs):
-        # if  epoch > 10:
-        #     netG.train(True)
-        # else:
-        #     netG.train(False)
-        if epoch % 5 == 0:
+        if epoch % 2 != 0:
+            netG.train(False)
             netD.train(True)
-            # netG.train(True)
         else:
-            # netG.train(False)
+            netG.train(True)
             netD.train(False)
 
         # For each batch in the dataloader
@@ -379,7 +362,7 @@ for lap_counter in range(0, laps):
             netD.zero_grad(set_to_none=True)
             netG.zero_grad(set_to_none=True)
             # Format batch
-            real =torch.reshape(torch.squeeze( data[0]),(batch_size,1,grid_size,grid_size)).to(device)
+            real = torch.reshape(torch.squeeze(data[0]), (batch_size, 1, grid_size, grid_size)).to(device)
             # real = data[0].clone().detach().requires_grad_(True).to(device)
             # real = real.view(-1, x_size * y_size).to(device)
             b_size = real.shape[0]
@@ -399,21 +382,24 @@ for lap_counter in range(0, laps):
             # Calculate gradients for D in backward pass
             # errD_real.backward()
             # D_x = output.mean().item()
-            errD_real.backward()
+            if netD.training == 1:
+                errD_real.backward()
             D_x = real_output.mean().item()
             ## Train with all-fake batch
             # Generate batch of latent vectors
 
-            noise = torch.reshape(torch.squeeze(torch.randn(b_size,nz,1)),(b_size,nz,1,1)).to(device)
-            #noise = torch.reshape((noise,(100,50,1,1)))
-            #noise = (r_min - r_max) * torch.randn(batch_size, nz, nz, device=device) + r_max
+            # noise = torch.reshape(torch.squeeze(torch.randn(b_size, nz, 1)), (b_size, nz, 1, 1)).to(device)
+            # noise = torch.reshape((noise,(100,50,1,1)))
+            noise = ((r_min - r_max) * torch.reshape(torch.squeeze(torch.randn(b_size, nz, 1)),
+                                                     (b_size, nz, 1, 1)) + r_max).to(device)
             # noise = torch.rand(b_size, nz, nz, device=device)
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
                 time.sleep(2)
             # Generate fake image batch with G
-            fake = torch.reshape(torch.squeeze( F.interpolate(netG(noise),size=grid_size)),(b_size,1,grid_size,grid_size)).to(device)
+            fake = torch.reshape(torch.squeeze(F.interpolate(netG(noise), size=grid_size)),
+                                 (b_size, 1, grid_size, grid_size)).to(device)
             if shape_stat == 1:
                 print(fake.shape)
                 print("NetG out - fake gen\n--------------------------\n")
@@ -433,20 +419,19 @@ for lap_counter in range(0, laps):
             # Calculate D's loss on the all-fake batch
             errD_fake = criterion(fake_output, label)
             # Calculate the gradients for this batch, accumulated (summed) with previous gradients
-            errD_fake.backward()
-            D_G_z1 = fake_output.mean().item()
-
-            # Compute error of D as sum over the fake and the real batches
+            if netD.training == 1:
+                errD_fake.backward()
+                # Compute error of D as sum over the fake and the real batches
+                # Update D
+                optimizerD.step()
             errD = errD_real + errD_fake
-            # Update D
-            optimizerD.step()
+            D_G_z1 = fake_output.mean().item()
             if epoch % 5 == 0:
                 # Clipping Discriminator Weight
                 for p in netD.parameters():
                     p.data.clamp_(-clip, clip)
             else:
                 pass
-
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -458,13 +443,13 @@ for lap_counter in range(0, laps):
             fake_output = netD(fake).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(fake_output, label)
-
             # Calculate gradients for G
-            errG.backward()
-            D_G_z2 = fake_output.mean().item()
-            # Update G
-            optimizerG.step()
+            if netG.training == 1:
+                errG.backward()
+                # Update G
+                optimizerG.step()
 
+            D_G_z2 = fake_output.mean().item()
             # Output training stats
             if batch_idx % 5 == 0:
                 print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
@@ -479,7 +464,8 @@ for lap_counter in range(0, laps):
             if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
                     fake_interpol_img = F.interpolate(netG(fixed_noise), size=grid_size)
-                    faket = torch.reshape(torch.squeeze(fake_interpol_img), (b_size, grid_size, grid_size)).cpu().detach().numpy()
+                    faket = torch.reshape(torch.squeeze(fake_interpol_img),
+                                          (b_size, grid_size, grid_size)).cpu().detach().numpy()
                     ccmap = cm.PRGn
                     fake_learning0 = azes[0].imshow(faket[0], cmap=ccmap)
                     fake_learning1 = azes[1].imshow(faket[1], cmap=ccmap)
@@ -504,13 +490,13 @@ for lap_counter in range(0, laps):
                         else:
                             pass
                         azes[10].text(
-                            num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 10,
+                            num_epochs * len(dataloader_structures) + num_epochs * len(dataloader_structures) / 15,
                             y_top - y_top / 2, 'G', color="blue", fontsize=15.)
                         azes[10].text(
-                            num_epochs * len(dataloader_structures) - num_epochs * len(dataloader_structures) / 10,
+                            num_epochs * len(dataloader_structures) + num_epochs * len(dataloader_structures) / 15,
                             y_top - y_top / 4, 'D', color="red",
                             fontsize=15.)
-                    realt = torch.reshape(real,(b_size,grid_size,grid_size)).cpu().detach().numpy()
+                    realt = torch.reshape(real, (b_size, grid_size, grid_size)).cpu().detach().numpy()
                     modesF = azes[11].scatter(faket[:, 0],
                                               faket[:, 1],
                                               edgecolor='red', facecolor='None', s=5, alpha=1,
@@ -521,32 +507,23 @@ for lap_counter in range(0, laps):
                                               linewidth=1, label='Real')
                     azes[11].set_title("MODES | Real - blue | Fake - Red")
                     test_data_index = 0
-                    # TODO : Create plot for Discriminator Decision Space Boundary!!!!!!!!
-                    # for i in range(1, batch_size + 1):
-                    #
-                    #     test_data[test_data_index] = torch.from_numpy(np.array(DB[DB_index]),
-                    #                                               device=device,
-                    #                                               dtype=torch.float)
-                    #     test_data_index += 1
-                    #     DS = np.squeeze(netD(test_data).detach().cpu().numpy(), axis=None)
-                    #     #print(DS.shape)
-                    #     #time.sleep(2)
-                    #     DecisionSpace[i - 1] = DS
-                    #     DB_index += 1
-                    # # print(decisionBoundry_Discriminator)
-                    # # time.sleep(2)
-                    # boundD = azes[12].imshow(DecisionSpace,cmap=cm.seismic)
+                    for i in range(batch_size):
+                        test_tensor = torch.tensor(test_data[i]).to(device)
+                        test_input = torch.unsqueeze(test_tensor.float(), 1)
+                        ## ([batch_size, 1, 250, 250])
+                        c = torch.squeeze(netD(test_input))
+                        confidences[i] = c
 
+                    conf = azes[12].imshow(confidences.cpu().detach().numpy(), cmap=cm.bwr)
                     img.append(
                         [fake_learning0, fake_learning1, fake_learning2, fake_learning3, fake_learning4, fake_learning5,
                          fake_learning6, fake_learning7, fake_learning8, fake_learning9, loss_G, loss_D, modesF,
-                         modesR])
-                    # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+                         modesR, conf])
             iters += 1
     if disp_progrss == 1 or lap_counter == laps - 1:
         ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
         plt.show()
-        # ani.save('../retardGAN1.gif', writer='pillow', fps=25, dpi=100)
+        # ani.save('../retardGAN3.gif', writer='pillow', fps=25, dpi=100)
 
     else:
         pass

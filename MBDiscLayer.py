@@ -18,7 +18,6 @@ class MinibatchDiscrimination(nn.Module):
     def forward(self, x):
         # x is NxA
         # T is AxBxC
-        #
         x = torch.squeeze(x)
 
         matrices = x.mm(self.T.view(self.in_features, -1))

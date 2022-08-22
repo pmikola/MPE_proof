@@ -28,12 +28,14 @@ class Generator(nn.Module):
             self.G_Block_A(features_generator * 2, features_generator, 4, 4, 1),
             nn.ConvTranspose2d(features_generator, num_of_chanells, 4, 4, 1),
             nn.Tanh(),  # [-1,1]
+            #nn.Hardtanh(-2, 2)
         )
 
     def G_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                              nn.BatchNorm2d(out_channels),
-                             nn.LeakyReLU(LRelU_slope, inplace=True),  # TODO : Modify activation function
+                             # nn.LeakyReLU(LRelU_slope, inplace=True),  # TODO : Modify activation function
+                             nn.Hardtanh(-2,2)
                              )
 
     # TODO : Create Adaptivepool layers Blocks
