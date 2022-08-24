@@ -2,25 +2,27 @@ from torch import nn
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, sample=None):
+    def __init__(self, in_channels, out_channels,kernel, stride,padding):
         super(ResidualBlock, self).__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=(1,1), stride=(1,1), padding=0),
+            nn.Conv2d(in_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU())
+            nn.Tanh())
         self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=(1,1), stride=(1,1), padding=0),
+            nn.Conv2d(out_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
+            nn.BatchNorm2d(out_channels),
+            nn.Tanh())
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_channels))
-        self.sample = sample
-        self.relu = nn.ReLU()
+        self.actOut = nn.Tanh()
         self.out_channels = out_channels
 
     def forward(self, x):
         residual = x
-        out = self.conv1(x)
-        out = self.conv2(out)
-        if self.sample:
-            residual = self.sample(x)
-        out += residual
-        out = self.relu(out)
+        a = self.conv1(x)
+        b = self.conv2(a)
+        c = self.conv3(b)
+        c += residual
+        out = self.actOut(c)
         return out

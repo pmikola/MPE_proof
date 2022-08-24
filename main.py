@@ -66,7 +66,7 @@ data_size = 500
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 20
+batch_size = 25
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
@@ -85,7 +85,7 @@ features_discriminator = batch_size
 # Number of training epochs
 num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0001
+lr = 0.0002
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.95
 beta2 = 0.999
@@ -244,7 +244,7 @@ for lap_counter in range(0, laps):
                                                    shuffle=True, pin_memory=True)
 
     # Create the generator
-    netG = Generator(ngpu, nz, num_of_chanells, features_generator).to(device)
+    netG = Generator(ngpu, nz, num_of_chanells, features_generator,grid_size).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -346,16 +346,10 @@ for lap_counter in range(0, laps):
     z = 0
     window = 3
     for epoch in range(num_epochs):
-        # if epoch % 2 != 0:
-        #     netG.train(False)
-        #     netD.train(True)
-        # else:
-        #     netG.train(True)
-        #     netD.train(False)
-        if z < window+1:
+        if z > window:
             netG.train(False)
             netD.train(True)
-        if z > window+1:
+        else:
             netG.train(True)
             netD.train(False)
         if z > window*2:
@@ -412,8 +406,9 @@ for lap_counter in range(0, laps):
                 print("Random noise\n--------------------------\n")
                 time.sleep(2)
             # Generate fake image batch with G
-            fake = torch.reshape(torch.squeeze(F.interpolate(netG(noise), size=grid_size)),
-                                 (b_size, 1, grid_size, grid_size)).to(device)
+            # fake = torch.reshape(torch.squeeze(F.interpolate(netG(noise), size=grid_size)),
+            #                      (b_size, 1, grid_size, grid_size)).to(device)
+            fake = netG(noise).to(device)
             if shape_stat == 1:
                 print(fake.shape)
                 print("NetG out - fake gen\n--------------------------\n")
@@ -441,7 +436,7 @@ for lap_counter in range(0, laps):
                 optimizerD.step()
             errD = errD_real + errD_fake
             D_G_z1 = fake_output.mean().item()
-            if epoch % 5 == 0:
+            if epoch % 2 == 0:
                 # Clipping Discriminator Weight
                 for p in netD.parameters():
                     p.data.clamp_(-clip, clip)
