@@ -31,7 +31,6 @@ class Generator(nn.Module):
         self.dout = nn.Dropout(p=0.05, inplace=False)
         self.ct2d = nn.ConvTranspose2d(features_generator, num_of_chanells, 4, 4, 1)
 
-
     def G_Block_A(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
 
@@ -49,8 +48,8 @@ class Generator(nn.Module):
         b = self.generator(a)
         c = self.dout(b)
         d = self.ct2d(c)
-        e = torch.tanh(d)
-        return self.generator(e)
+        x = torch.tanh(d)
+        return x
 
 
 # Discriminator Code

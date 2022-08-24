@@ -352,10 +352,10 @@ for lap_counter in range(0, laps):
         # else:
         #     netG.train(True)
         #     netD.train(False)
-        if z < window-1:
+        if z < window+1:
             netG.train(False)
             netD.train(True)
-        if z > window-1:
+        if z > window+1:
             netG.train(True)
             netD.train(False)
         if z > window*2:
