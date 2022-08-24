@@ -7,6 +7,8 @@ import numpy as np
 from matplotlib import pyplot as plt, animation
 import sys
 import matplotlib.cm as cm
+import importlib.util
+from cv2 import cv2
 from numba import cuda, vectorize, guvectorize, jit, njit
 import time
 import random as _random
@@ -57,12 +59,17 @@ def DataGenerator(frame_interval, plot_period, particle_scale, num_of_structures
     for i in range(0, len(Generated_Structure[0])):
         x_pair = Generated_Structure[0][i]
         y_pair = Generated_Structure[1][i]
-        if x_pair > grid_size - 1 or y_pair > grid_size - 1:
-            # print(x_pair, y_pair)
+        if i > grid_size:
             pass
-        else:
-            # Gen_Structure[int(x_pair)][int(y_pair)] = 1.
-            Gen_Structure[int(x_pair)][int(y_pair)] = 1.
+            if x_pair > grid_size - 1 or y_pair > grid_size - 1:
+                # print(x_pair, y_pair)
+                pass
+            else:
+                # Gen_Structure[int(x_pair)][int(y_pair)] = 1.
+                Gen_Structure[int(x_pair)][int(y_pair)] = 1.
+
+    Gen_Structure = cv2.GaussianBlur(Gen_Structure, (3, 3), cv2.BORDER_DEFAULT)
+
     # Gen_Structure[pulse_loc_x][pulse_loc_y] = 2. # for later purpose
     #     # print([int(x_pair), int(y_pair)])
     #     # print(Gen_Structure[int(x_pair)][int(y_pair)])

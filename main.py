@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import time
+
 from GAN import Generator, Discriminator
 import matplotlib.cm as cm
 import DataGen
@@ -25,8 +26,8 @@ print(torch.cuda.get_device_name(0))
 torch.cuda.empty_cache()
 
 # TODO : Speeding up calculationss
-torch.backends.cudnn.benchmark = True
-scaler = torch.cuda.amp.GradScaler()
+# torch.backends.cudnn.benchmark = True
+# scaler = torch.cuda.amp.GradScaler()
 cc = C()
 path = 'DATASET/training_main'
 pathD = 'Models/Dnn/Discriminator.pth'
@@ -43,16 +44,17 @@ img = []
 azes = []
 plot_flag = 0
 show_structure = 0
+m = 0
 # save the generated data to files
-save_flag = 0
+save_flag = m
 # generate dataset
-generate = 0
+generate = m
 # # check file
 check_data = 0
 # nuber of the dataset to check
 check_file_dataset = 0
 # number of performed simulations
-DataNum = 1
+DataNum = 510
 frame_interval = 8
 plot_period = 5000  # ms
 # grid_size / dimension
@@ -64,14 +66,14 @@ data_size = 500
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 25
+batch_size = 20
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
 num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 200  # 100
+nz = 100  # 100
 # Range of the latent vector values
 r_max = 1
 r_min = -r_max
@@ -81,12 +83,12 @@ features_generator = batch_size
 # Size of feature maps in discriminator
 features_discriminator = batch_size
 # Number of training epochs
-num_epochs = 250
+num_epochs = 50
 # Learning rate for optimizers
 lr = 0.0001
 # Beta1 and beta2 hyperparam for Adam optimizers
-beta1 = 0.96
-beta2 = 0.99
+beta1 = 0.95
+beta2 = 0.999
 # momentum for RMSprop optimizers
 momentumG = 0.95
 momentumD = 0.95
@@ -298,7 +300,8 @@ for lap_counter in range(0, laps):
     print("Number of parameters | Generator | ", count_parameters(netG))
     time.sleep(1)
     # Initialize Loss function
-    criterion = nn.BCELoss()
+    criterion = nn.BCELoss(weight=None, size_average=None, reduce=None, reduction='mean')
+    # criterion = nn.CrossEntropyLoss(weight=None, size_average=None, ignore_index=- 100, reduce=None, reduction='mean', label_smoothing=0.1)
     # criterion = nn.BCEWithLogitsLoss()
     # Fixed noise visualisation check
     fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (batch_size, nz, 1, 1)).to(device)
@@ -340,14 +343,25 @@ for lap_counter in range(0, laps):
     print("Starting Training Loop...")
 
     # For each epoch
+    z = 0
+    window = 3
     for epoch in range(num_epochs):
-        if epoch % 2 != 0:
+        # if epoch % 2 != 0:
+        #     netG.train(False)
+        #     netD.train(True)
+        # else:
+        #     netG.train(True)
+        #     netD.train(False)
+        if z < window-1:
             netG.train(False)
             netD.train(True)
-        else:
+        if z > window-1:
             netG.train(True)
             netD.train(False)
-
+        if z > window*2:
+            z = 0
+        z += 1
+        #print(z)
         # For each batch in the dataloader
         for batch_idx, data in enumerate(dataloader_structures, 0):
             if shape_stat == 1:
@@ -360,7 +374,7 @@ for lap_counter in range(0, laps):
             ###########################
             ## Train with all-real batch
             netD.zero_grad(set_to_none=True)
-            netG.zero_grad(set_to_none=True)
+            # netG.zero_grad(set_to_none=True)
             # Format batch
             real = torch.reshape(torch.squeeze(data[0]), (batch_size, 1, grid_size, grid_size)).to(device)
             # real = data[0].clone().detach().requires_grad_(True).to(device)
@@ -418,6 +432,7 @@ for lap_counter in range(0, laps):
 
             # Calculate D's loss on the all-fake batch
             errD_fake = criterion(fake_output, label)
+
             # Calculate the gradients for this batch, accumulated (summed) with previous gradients
             if netD.training == 1:
                 errD_fake.backward()
@@ -436,7 +451,7 @@ for lap_counter in range(0, laps):
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
-            netD.zero_grad(set_to_none=True)
+            # netD.zero_grad(set_to_none=True)
             netG.zero_grad(set_to_none=True)
             label.fill_(real_label)  # fake labels are real for generator cost
             # Since we just updated D, perform another forward pass of all-fake batch through D
@@ -450,6 +465,7 @@ for lap_counter in range(0, laps):
                 optimizerG.step()
 
             D_G_z2 = fake_output.mean().item()
+
             # Output training stats
             if batch_idx % 5 == 0:
                 print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
