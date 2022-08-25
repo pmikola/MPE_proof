@@ -62,18 +62,18 @@ grid_size = 250  # 300
 nsteps = 2
 
 # Datanumber of the training dataset
-data_size = 500
+data_size = 250
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 25
+batch_size =25
 
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
 num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 1000  # 100
+nz = 100  # 100
 # Range of the latent vector values
 r_max = 1
 r_min = -r_max
@@ -85,7 +85,7 @@ features_discriminator = batch_size
 # Number of training epochs
 num_epochs = 50
 # Learning rate for optimizers
-lr = 0.00015
+lr = 0.0002
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.95
 beta2 = 0.999
@@ -115,8 +115,6 @@ for i in range(batch_size + 1):
     # print(a)
     test_data[i - 1] = a
     # time.sleep(1)
-
-
 # ------------------------------- INIT --------------------------
 # ------------------------------- FUNC --------------------------
 def img_fields(axes, fields_tensor, metas_tensor, grid_size, i):
@@ -262,9 +260,12 @@ for lap_counter in range(0, laps):
             #  to mean=0, stdev=0.02.
             netG.apply(weights_init)
     else:
-        # Apply the weights_init function to randomly initialize all weights
-        #  to mean=0, stdev=0.02.
-        netG.apply(weights_init)
+        if laps == 1:
+            # Apply the weights_init function to randomly initialize all weights
+            #  to mean=0, stdev=0.02.
+            netG.apply(weights_init)
+        else:
+            pass
 
     # Print the model
     print(netG)
@@ -285,9 +286,12 @@ for lap_counter in range(0, laps):
         try:
             netD.load_state_dict(torch.load(pathD))
         except:
-            # Apply the weights_init function to randomly initialize all weights
-            #  to mean=0, stdev=0.2.
-            netD.apply(weights_init)
+            if laps == 1:
+                # Apply the weights_init function to randomly initialize all weights
+                #  to mean=0, stdev=0.2.
+                netD.apply(weights_init)
+            else:
+                pass
     else:
         # Apply the weights_init function to randomly initialize all weights
         #  to mean=0, stdev=0.2.
@@ -345,13 +349,14 @@ for lap_counter in range(0, laps):
     # For each epoch
     z = 0
     window = 3
+
     for epoch in range(num_epochs):
-        if z > window+1:
-            netG.train(False)
-            netD.train(True)
-        else:
+        if z < window:
             netG.train(True)
             netD.train(False)
+        else:
+            netG.train(False)
+            netD.train(True)
         if z > window*2:
             z = 0
         z += 1
@@ -436,7 +441,9 @@ for lap_counter in range(0, laps):
                 optimizerD.step()
             errD = errD_real + errD_fake
             D_G_z1 = fake_output.mean().item()
-            if epoch % 1 == 0:
+            # for p in netD.parameters():
+            #     p.data.clamp_(-clip, clip)
+            if epoch % 2 == 0:
                 # Clipping Discriminator Weight
                 for p in netD.parameters():
                     p.data.clamp_(-clip, clip)
@@ -472,7 +479,7 @@ for lap_counter in range(0, laps):
             D_losses.append(errD.item())
 
             # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
+            if (iters % 10 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
                     fake_interpol_img = F.interpolate(netG(fixed_noise), size=grid_size)
                     faket = torch.reshape(torch.squeeze(fake_interpol_img),
@@ -534,7 +541,7 @@ for lap_counter in range(0, laps):
     if disp_progrss == 1 or lap_counter == laps - 1:
         ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
         plt.show()
-        #ani.save('../resGAN4.gif', writer='pillow', fps=25, dpi=100)
+        #ani.save('../resGAN6.gif', writer='pillow', fps=25, dpi=100)
 
     else:
         pass

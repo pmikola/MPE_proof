@@ -20,17 +20,17 @@ class Generator(nn.Module):
         self.nz = nz
         self.ngpu = ngpu
         self.grid_size = grid_size
-        self.generator_input = self.G_Block_A(nz, features_generator * 32, 1, 1, 0)
-        self.ResNet_GA1 = self.G_Block_Residual(features_generator * 32, features_generator * 32,1, 1, 0)
-        self.GBA1 = self.G_Block_A(features_generator * 32, features_generator * 16, 4, 4, 1)
-        self.ResNet_GA2 = self.G_Block_Residual(features_generator*16, features_generator*16, 2, 2, 1)
-        self.GBA2 = self.G_Block_A(features_generator * 16, features_generator * 8, 4, 4, 1)
-        self.ResNet_GA3 = self.G_Block_Residual(features_generator * 8, features_generator * 8, 1, 1, 0)
-        self.GBA3 = self.G_Block_A(features_generator * 8, features_generator * 4, 4, 4, 1)
-        self.ResNet_GA4 = self.G_Block_Residual(features_generator * 4, features_generator * 4, 1, 1, 0)
-        self.GBA4 = self.G_Block_A(features_generator * 4, features_generator * 2, 4, 4, 1)
-        self.ResNet_GA5 = self.G_Block_Residual(features_generator * 2, features_generator * 2, 1, 1, 0)
-        self.GBA5 = self.G_Block_A(features_generator * 2, features_generator, 4, 4, 1)
+        self.generator_input = self.G_Block_A(nz, self.features_generator * 32, 1, 1, 0)
+        self.ResNet_GA1 = self.G_Block_Residual(self.features_generator * 32, self.features_generator * 32,1, 1, 0)
+        self.GBA1 = self.G_Block_A(self.features_generator * 32, self.features_generator * 16, 4, 4, 1)
+        self.ResNet_GA2 = self.G_Block_Residual(self.features_generator*16, self.features_generator*16, 2, 2, 1)
+        self.GBA2 = self.G_Block_A(self.features_generator * 16, self.features_generator * 8, 4, 4, 1)
+        self.ResNet_GA3 = self.G_Block_Residual(self.features_generator * 8, self.features_generator * 8, 1, 1, 0)
+        self.GBA3 = self.G_Block_A(self.features_generator * 8, self.features_generator * 4, 4, 4, 1)
+        self.ResNet_GA4 = self.G_Block_Residual(self.features_generator * 4, self.features_generator * 4, 1, 1, 0)
+        self.GBA4 = self.G_Block_A(self.features_generator * 4, self.features_generator * 2, 4, 4, 1)
+        self.ResNet_GA5 = self.G_Block_Residual(self.features_generator * 2, self.features_generator * 2, 1, 1, 0)
+        self.GBA5 = self.G_Block_A(self.features_generator * 2, self.features_generator, 4, 4, 1)
         # nn.Hardtanh(-2, 2)
         self.dout = nn.Dropout(p=0.05, inplace=False)
         self.ct2d = nn.ConvTranspose2d(features_generator, num_of_chanells, 4, 4, 1)
@@ -87,13 +87,17 @@ class Discriminator(nn.Module):
             nn.Conv2d(self.num_of_chanells, self.features_discriminator, 2, 2, 1, bias=False),
             nn.LeakyReLU(LRelU_slope, inplace=True),
         )
-        self.discriminator = nn.Sequential(
-            self.D_Block_A(self.features_discriminator, self.features_discriminator * 2, 4, 4, 1),
-            self.D_Block_A(self.features_discriminator * 2, self.features_discriminator * 4, 4, 4, 1),
-            self.D_Block_A(self.features_discriminator * 4, self.features_discriminator * 8, 4, 4, 1),
-            self.D_Block_A(self.features_discriminator * 8, self.features_discriminator * 16, 4, 4, 1),
-            self.D_Block_A(self.features_discriminator * 16, self.features_discriminator * 32, 3, 3, 1),
-        )
+        self.ResNet_DA1 = self.D_Block_Residual(features_discriminator, features_discriminator,1, 1, 0)
+        self.DBA1 = self.D_Block_A(self.features_discriminator, self.features_discriminator * 2, 4, 4, 1)
+        self.ResNet_DA2 = self.D_Block_Residual(features_discriminator * 2, features_discriminator * 2,1, 1, 0)
+        self.DBA2 = self.D_Block_A(self.features_discriminator * 2, self.features_discriminator * 4, 4, 4, 1)
+        self.ResNet_DA3 = self.D_Block_Residual(features_discriminator * 4, features_discriminator * 4,1, 1, 0)
+        self.DBA3 = self.D_Block_A(self.features_discriminator * 4, self.features_discriminator * 8, 4, 4, 1)
+        #self.ResNet_DA4 = self.D_Block_Residual(features_discriminator * 8, features_discriminator * 8,1, 1, 0)
+        self.DBA4 = self.D_Block_A(self.features_discriminator * 8, self.features_discriminator * 16, 4, 4, 1)
+        #self.ResNet_DA5 = self.D_Block_Residual(features_discriminator * 16, features_discriminator * 16,1, 1, 0)
+        self.DBA5 = self.D_Block_A(self.features_discriminator * 16, self.features_discriminator * 32, 3, 3, 1)
+        #self.ResNet_DA6 = self.D_Block_Residual(features_discriminator * 32, features_discriminator * 32,1, 1, 0)
 
         # Preventing of mode collapse by corelate many same data on output of sequential
         self.mbd = MinibatchDiscrimination(self.features_discriminator * 32, self.features_discriminator * 32, 1)
@@ -106,11 +110,26 @@ class Discriminator(nn.Module):
                              nn.LeakyReLU(LRelU_slope, inplace=True),
                              )
 
+    def D_Block_Residual(self, in_channels, out_channels, kernel, stride,padding):
+        return nn.Sequential(ResidualBlock(in_channels, out_channels, kernel, stride,padding),
+                             ResidualBlock(out_channels, out_channels, kernel, stride,padding),
+                             ResidualBlock(out_channels, out_channels, kernel, stride,padding),
+                             )
+
     def forward(self, input):
         a = self.discriminator_input(input)
-        b = self.discriminator(a)
-        c = self.mbd(b)
-        # d = torch.tanh(c)
-        d = self.c2d(c)
-        x = torch.sigmoid(d)
-        return x
+        b_res = self.ResNet_DA1(a)
+        b = self.DBA1(b_res)
+        c_res = self.ResNet_DA2(b)
+        c = self.DBA2(c_res)
+        d_res = self.ResNet_DA3(c)
+        d = self.DBA3(d_res)
+        #e_res = self.ResNet_DA4(d)
+        e = self.DBA4(d)
+        #f_res = self.ResNet_DA5(e)
+        f = self.DBA5(e)
+        #g_res = self.ResNet_DA6(f)
+        g = self.mbd(f)
+        h = self.c2d(g)
+        out = torch.sigmoid(h)
+        return out
