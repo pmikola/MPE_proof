@@ -54,7 +54,7 @@ check_data = 0
 # nuber of the dataset to check
 check_file_dataset = 0
 # number of performed simulations
-DataNum = 510
+DataNum = 10
 frame_interval = 8
 plot_period = 5000  # ms
 # grid_size / dimension
@@ -73,7 +73,7 @@ disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
 num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 100  # 100
+nz = 1000  # 100
 # Range of the latent vector values
 r_max = 1
 r_min = -r_max
@@ -85,7 +85,7 @@ features_discriminator = batch_size
 # Number of training epochs
 num_epochs = 50
 # Learning rate for optimizers
-lr = 0.0002
+lr = 0.00015
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.95
 beta2 = 0.999
@@ -346,7 +346,7 @@ for lap_counter in range(0, laps):
     z = 0
     window = 3
     for epoch in range(num_epochs):
-        if z > window:
+        if z > window+1:
             netG.train(False)
             netD.train(True)
         else:
@@ -436,7 +436,7 @@ for lap_counter in range(0, laps):
                 optimizerD.step()
             errD = errD_real + errD_fake
             D_G_z1 = fake_output.mean().item()
-            if epoch % 2 == 0:
+            if epoch % 1 == 0:
                 # Clipping Discriminator Weight
                 for p in netD.parameters():
                     p.data.clamp_(-clip, clip)
@@ -534,7 +534,7 @@ for lap_counter in range(0, laps):
     if disp_progrss == 1 or lap_counter == laps - 1:
         ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
         plt.show()
-        # ani.save('../retardGAN3.gif', writer='pillow', fps=25, dpi=100)
+        #ani.save('../resGAN4.gif', writer='pillow', fps=25, dpi=100)
 
     else:
         pass

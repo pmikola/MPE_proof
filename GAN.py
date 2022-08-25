@@ -42,8 +42,9 @@ class Generator(nn.Module):
                              # nn.FeatureAlphaDropout(p=0.1, inplace=False),
                              # nn.LeakyReLU(0.1, inplace=True),  # TODO : Modify activation function
                              # nn.Hardtanh(-2, 2)
-                             nn.Tanh(),
-                             # nn.ReLU(),
+                             #nn.Tanh(),
+                             #nn.ReLU(),
+                             nn.Softsign(),
                              )
 
     def G_Block_Residual(self, in_channels, out_channels, kernel, stride,padding):

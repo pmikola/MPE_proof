@@ -7,15 +7,15 @@ class ResidualBlock(nn.Module):
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_channels),
-            nn.Tanh())
+            nn.ReLU())
         self.conv2 = nn.Sequential(
             nn.Conv2d(out_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_channels),
-            nn.Tanh())
+            nn.ReLU())
         self.conv3 = nn.Sequential(
             nn.Conv2d(out_channels, out_channels, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_channels))
-        self.actOut = nn.Tanh()
+        self.actOut = nn.ReLU()
         self.out_channels = out_channels
 
     def forward(self, x):
