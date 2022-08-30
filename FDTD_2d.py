@@ -317,13 +317,13 @@ class FDTD:
         else:
             for i in range(0, self.num_of_structures):
                 x1 = np.random.uniform(0, self.IE-1)
-                x2 = np.random.uniform(0, scale * 10)
+                x2 = np.random.uniform(0, scale * 5)
                 y1 = np.random.uniform(0, self.JE-1)
-                y2 = np.random.uniform(0, scale * 10)
+                y2 = np.random.uniform(0, scale * 5)
                 cr.rectangle(x1, y1, x2, y2)
             for i in range(0, self.num_of_structures):
                 x1 = np.random.uniform(0, self.IE-1)
-                x2 = np.random.uniform(0, scale * 10)
+                x2 = np.random.uniform(0, scale * 5)
                 y1 = np.random.uniform(0, self.JE-1)
                 y2 = np.random.uniform(0, 2 * M.pi)
                 y3 = np.random.uniform(0, 2 * M.pi)

@@ -60,17 +60,17 @@ DataNum = 10
 frame_interval = 8
 plot_period = 5000  # ms
 # grid_size / dimension
-grid_size = 250  # 300
+grid_size = 64  # 300
 nsteps = 2
 
 # Datanumber of the training dataset
-data_size = 500
+data_size = 10
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
 batch_size = 25
 # resolution of the images
-resolution = 250
+resolution = 64
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
@@ -100,7 +100,7 @@ clip = 0.01
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
-show_training_set = False
+show_training_set = True
 # deleting the models
 delate_models = True
 delate_G = False
@@ -497,9 +497,9 @@ for lap_counter in range(0, laps):
             # Check how the generator is doing by saving G's output on fixed_noise
             if (iters % 5 == 0) or ((epoch == num_epochs - 1) and (batch_idx == len(dataloader_structures) - 1)):
                 with torch.no_grad():
-                    fake_interpol_img = F.interpolate(netG(fixed_noise), size=resolution)
+                    fake_interpol_img = F.interpolate(netG(fixed_noise), size=grid_size)
                     faket = torch.reshape(torch.squeeze(fake_interpol_img),
-                                          (b_size, resolution, resolution)).cpu().detach().numpy()
+                                          (b_size, grid_size, grid_size)).cpu().detach().numpy()
                     ccmap = cm.PRGn
                     fake_learning0 = azes[0].imshow(faket[0], cmap=ccmap)
                     fake_learning1 = azes[1].imshow(faket[1], cmap=ccmap)
