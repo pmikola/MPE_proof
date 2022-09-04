@@ -282,6 +282,7 @@ class FDTD:
             else:
                 pass
         if self.particle_scale == 0:
+            np.random.seed(1)
             for i in range(0, self.num_of_structures):
                 x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale)
@@ -299,6 +300,7 @@ class FDTD:
                 cr.close_path()
 
         elif self.particle_scale == 1:
+            np.random.seed(2)
             for i in range(0, self.num_of_structures):
                 x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale / 10)
@@ -315,6 +317,7 @@ class FDTD:
                 cr.set_line_width(1)
                 cr.close_path()
         else:
+            np.random.seed(3)
             for i in range(0, self.num_of_structures):
                 x1 = np.random.uniform(0, self.IE-1)
                 x2 = np.random.uniform(0, scale * 5)

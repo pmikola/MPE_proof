@@ -56,7 +56,7 @@ check_data = 0
 # nuber of the dataset to check
 check_file_dataset = 0
 # number of performed simulations
-DataNum = 10
+DataNum = 1000
 frame_interval = 8
 plot_period = 5000  # ms
 # grid_size / dimension
@@ -64,31 +64,33 @@ grid_size = 64  # 300
 nsteps = 2
 
 # Datanumber of the training dataset
-data_size = 10
+data_size = 500
 # number of trained dataset loading laps
 laps = 1
 # Batch size during training
-batch_size = 25
+batch_size = 50
 # resolution of the images
 resolution = 64
+# generator output size
+gen_output = 10
+
 # Displaying progress of the traing - modes of fake generator images + loss plots
 disp_progrss = 0
 # Number of first layer channels in Discriminator (for rgb is 3 but for our 0,1 data is 1)
 num_of_chanells = 1
 # Size of z latent vector (i.e. size of generator input)
-nz = 200  # 100
+nz = 500  # 100
 # Range of the latent vector values
 r_max = 1
 r_min = -r_max
 
 # Size of feature maps in generator
-features_generator = batch_size
+features_generator = 50
 # Size of feature maps in discriminator
-features_discriminator = batch_size
+features_discriminator = 35
 # Number of training epochs
 num_epochs = 50
-# Learning rate for optimizers
-lr = 0.0003
+lr = 0.00025
 # Beta1 and beta2 hyperparam for Adam optimizers
 beta1 = 0.96
 beta2 = 0.99
@@ -100,7 +102,7 @@ clip = 0.01
 # Show shapes of Gen and Disc in and out
 shape_stat = 0
 # Showing samples from training set
-show_training_set = True
+show_training_set = False
 # deleting the models
 delate_models = True
 delate_G = False
@@ -275,7 +277,7 @@ for lap_counter in range(0, laps):
                                                    shuffle=True, pin_memory=True)
 
     # Create the generator
-    netG = Generator(ngpu, nz, num_of_chanells, features_generator, grid_size).to(device)
+    netG = Generator(ngpu, nz, num_of_chanells, features_generator, grid_size,gen_output).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -331,7 +333,7 @@ for lap_counter in range(0, laps):
     # criterion = nn.CrossEntropyLoss(weight=None, size_average=None, ignore_index=- 100, reduce=None, reduction='mean', label_smoothing=0.1)
     # criterion = nn.BCEWithLogitsLoss()
     # Fixed noise visualisation check
-    fixed_noise = torch.reshape(torch.squeeze(torch.randn(batch_size, nz, 1)), (batch_size, nz, 1, 1)).to(device)
+    fixed_noise = torch.reshape(torch.squeeze(torch.randn(gen_output, nz, 1)), (gen_output, nz, 1, 1)).to(device)
     # Establish convention for real and fake labels during training
     real_label = 1.
     fake_label = 0.
@@ -339,8 +341,8 @@ for lap_counter in range(0, laps):
     optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-09, weight_decay=0, amsgrad=True)
     optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2), eps=1e-09, weight_decay=0,
                             amsgrad=True)
-    schedulerD = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerD, int(num_epochs / 2), int(lr / 5))
-    schedulerG = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerG, int(num_epochs / 2), int(lr / 5))
+    schedulerD = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerD, int(num_epochs / 3), int(lr / 5))
+    schedulerG = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerG, int(num_epochs / 3), int(lr / 5))
     # optimizerD = optim.RMSprop(netD.parameters(), lr=lr, alpha=0.9, eps=1e-08, weight_decay=0, momentum=momentumD)
     # optimizerG = optim.RMSprop(netG.parameters(), lr=lr, alpha=0.9, eps=1e-08, weight_decay=0, momentum=momentumG)
 
@@ -374,7 +376,7 @@ for lap_counter in range(0, laps):
     # For each epoch
     z = 0
     window = 5
-    gp_lambda = 1.
+    gp_lambda = 10.
     for epoch in range(num_epochs):
         # if z < 2: #or epoch % 5 != 0:
         #     netG.train(True)
@@ -401,6 +403,7 @@ for lap_counter in range(0, laps):
             # netG.zero_grad(set_to_none=True)
             # Format batch
             real = torch.reshape(torch.squeeze(data[0]), (batch_size, 1, grid_size, grid_size)).to(device)
+
             # real = data[0].clone().detach().requires_grad_(True).to(device)
             # real = real.view(-1, x_size * y_size).to(device)
             b_size = real.shape[0]
@@ -417,19 +420,23 @@ for lap_counter in range(0, laps):
                 time.sleep(2)
             # Calculate loss on all-real batch
             errD_real = criterion(real_output, label)
+            #errD_real = real_output.mean()
             if netD.training == 1:
                 errD_real.backward()
             D_x = real_output.mean().item()
             # Generate batch of latent vectors
-            noise = ((r_min - r_max) * torch.reshape(torch.squeeze(torch.randn(b_size, nz, 1)),
-                                                     (b_size, nz, 1, 1)) + r_max).to(device)
+            noise = ((r_min - r_max) * torch.reshape(torch.squeeze(torch.randn(gen_output, nz, 1)),
+                                                     (gen_output, nz, 1, 1)) + r_max).to(device)
             if shape_stat == 1:
                 print(noise.shape)
                 print("Random noise\n--------------------------\n")
                 time.sleep(2)
             # Generate fake image batch with G
-            fake = netG(noise).to(device)
-            # gp = compute_gp(netD, real, fake)
+            fake_so = netG(noise).to(device)
+            fake = fake_so.repeat(5,1,1,1)
+            # print(fake.shape)
+            # time.sleep(5)
+            #gp = compute_gp(netD, real, fake)
             if shape_stat == 1:
                 print(fake.shape)
                 print("NetG out - fake gen\n--------------------------\n")
@@ -444,24 +451,21 @@ for lap_counter in range(0, laps):
             # output = netD(fake.detach()).view(-1)
             # Calculate D's loss on the all-fake batch
             errD_fake = criterion(fake_output, label)
+            #errD_fake = fake_output.mean()
             # d_loss = - torch.mean(real_output) + torch.mean(fake_output)
 
-            errD = (errD_real + errD_fake)
+            errD = errD_real + errD_fake #+ gp*gp_lambda
             # Calculate the gradients for this batch, accumulated (summed) with previous gradients
             if netD.training == 1:
                 errD_fake.backward()
                 # Compute error of D as sum over the fake and the real batches
                 # Update D
+            #errD.backward()
             optimizerD.step()
             D_G_z1 = fake_output.mean().item()
-            # for p in netD.parameters():
-            #     p.data.clamp_(-clip, clip)
-            if epoch % 1 == 0:
-                # Clipping Discriminator Weight
-                for p in netD.parameters():
-                    p.data.clamp_(-clip, clip)
-            else:
-                pass
+            for p in netD.parameters():
+                p.data.clamp_(-clip, clip)
+
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
@@ -473,11 +477,12 @@ for lap_counter in range(0, laps):
             fake_output = netD(fake).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(fake_output, label)
-            # errG = -torch.mean(fake_output)
+            #errG = -torch.mean(fake_output)
             # Calculate gradients for G
             if netG.training == 1:
                 errG.backward()
             # Update G
+
             optimizerG.step()
 
             D_G_z2 = fake_output.mean().item()
@@ -499,7 +504,8 @@ for lap_counter in range(0, laps):
                 with torch.no_grad():
                     fake_interpol_img = F.interpolate(netG(fixed_noise), size=grid_size)
                     faket = torch.reshape(torch.squeeze(fake_interpol_img),
-                                          (b_size, grid_size, grid_size)).cpu().detach().numpy()
+                                          (gen_output, grid_size, grid_size)).cpu().detach().numpy()
+                    #faket = faket_so.repeat(1, 1)
                     ccmap = cm.PRGn
                     fake_learning0 = azes[0].imshow(faket[0], cmap=ccmap)
                     fake_learning1 = azes[1].imshow(faket[1], cmap=ccmap)
@@ -557,7 +563,7 @@ for lap_counter in range(0, laps):
     if disp_progrss == 1 or lap_counter == laps - 1:
         ani = animation.ArtistAnimation(fakes_loss_modes, img, interval=30, blit=True)
         plt.show()
-        # ani.save('../resGAN6.gif', writer='pillow', fps=25, dpi=100)
+        #ani.save('../resGAN7.gif', writer='pillow', fps=25, dpi=100)
 
     else:
         pass
